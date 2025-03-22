@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+PyYAML
+aiohttp
+aiosqlite
+passlib
+python-jose[cryptography]
+typer
+watchdog
+docker
+jinja2
+starlette

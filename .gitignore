@@ -1,0 +1,6 @@
+*.pyc
+*.log
+.env
+__pycache__/
+*.db
+/moat.db
