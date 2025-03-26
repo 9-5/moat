@@ -1,0 +1,14 @@
+listen_host: 0.0.0.0
+listen_port: 8000
+secret_key: 5e9a2a64e5e0bf8e77786b4113f06db4375e480770921a0d5dc5a14109bccafd
+access_token_expire_minutes: 60
+database_url: sqlite+aiosqlite:///./moat.db
+moat_base_url: https://moat.bor.i.ng
+cookie_domain: .bor.i.ng
+docker_monitor_enabled: false
+moat_label_prefix: moat
+static_services:
+- hostname: app.bor.i.ng
+  target_url: http://127.0.0.1:9090
+- hostname: test.bor.i.ng
+  target_url: http://100.98.112.7:9001

@@ -26,81 +26,70 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 ## Screenshots
 <div align="center">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-4d0d-8369-567c29b793e2/moat_screenshot_login.png" width="350">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-4d0d-8369-567c29b793e2/moat_screenshot_admin.png" width="350">
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-a4f9-ca3a2f9bb188/moat-login.png" height="300" width="600"/>
+<img src="https://github.com/user-attachments/assets/a00a79fb-8832-404f-a958-176965f225a3/moat-admin.png" height="300" width="600"/>
 </div>
 
 ## Features
 
-*   **Authentication:** Secure your services with username/password authentication.
-*   **Reverse Proxy:** Route traffic to your internal services based on hostname.
-*   **Docker Integration:** Automatically discover and proxy Docker containers.
-*   **Centralized Management:** Configure services and authentication in one place.
-*   **Admin UI:** Easy configuration and management via a web interface.
+*   **Authentication**: User login with username/password.
+*   **Reverse Proxy**: Securely proxy requests to backend applications.
+*   **Service Discovery**: Automatically discover services via Docker labels.
+*   **Static Configuration**: Define services manually in `config.yml`.
+*   **Centralized Security**: Enforce authentication for all your apps in one place.
+*   **Admin UI**: Configure Moat and manage static services via web interface.
+*   **Cookie-based Authentication**: Keeps users logged in across multiple apps.
 
 ## Prerequisites
 
 *   Python 3.7+
-*   Docker (optional, for Docker-based service discovery)
+*   Docker (optional, for service discovery)
 
 ## Installation
 
 ```bash
-pip install fastapi uvicorn python-dotenv
+git clone https://github.com/your-username/moat.git
+cd moat
+python3 -m venv venv
+source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+pip install -r requirements.txt
 ```
 
 ## Configuration
 
-Moat requires a `config.yml` file in the working directory. You can generate a default configuration using the `init-config` command:
+Moat's configuration is managed through a `config.yml` file.  You can initialize a basic configuration file using the `init-config` command, or create one manually.
 
-```bash
-moat init-config
-```
-
-Edit the `config.yml` file to configure Moat's settings, including the `secret_key`, `database_url`, and service definitions.
-
-Example `config.yml`:
-
-```yaml
-listen_host: 0.0.0.0
-listen_port: 8000
-secret_key: YOUR_VERY_SECRET_KEY_CHANGE_THIS_NOW_PLEASE
-access_token_expire_minutes: 60
-database_url: sqlite+aiosqlite:///./moat.db
-moat_base_url: https://moat.bor.i.ng # MUST be the public URL of Moat itself.
-cookie_domain: .bor.i.ng
-
-docker_monitor_enabled: true
-moat_label_prefix: moat
-
-static_services:
-  - hostname: app.bor.i.ng
-    target_url: http://127.0.0.1:9090
-```
+1.  **Initialize Configuration**:
+    ```bash
+    python main.py init-config
+    ```
+2.  **Edit `config.yml`**:
+    *   Set a strong `secret_key`.  Use `openssl rand -hex 32` to generate one.
+    *   Configure `moat_base_url` to the public URL where Moat is accessible.
+    *   Adjust other settings as needed (database URL, cookie domain, etc.).
 
 ## Running Moat
 
 ```bash
-uvicorn main:app --reload
-```
-
-Or, using the Moat CLI:
-
-```bash
-moat run --reload
+python main.py run --reload # Use --reload for automatic restarts during development
 ```
 
 ## Usage
 
-Once Moat is running, access it in your browser. You will be prompted to log in. After logging in, Moat will proxy requests to your configured services based on the hostname.
+Once Moat is running, access its admin interface (typically at `/moat/admin`) to configure reverse proxy rules.
+
+*   **Docker Service Discovery**:  Moat automatically detects Docker containers with specific labels.  See the Configuration section for details.
+*   **Static Services**:  Define static proxy rules in `config.yml` or via the admin UI.
 
 ## CLI Commands
 
-*   `run`: Starts the Moat server.
-    *   `--reload`: Enables auto-reloading for development.
 *   `init-config`: Creates a default `config.yml` file.
-*   `add-static-service`: Adds a static service to the configuration.
-*   `bind-static-service`: Binds a static service to a Docker container's hostname and port.
+*   `run`: Starts the Moat server.  Use `--reload` for development.
+*   `add-static`: Adds a static service entry to `config.yml`.
+
+## Cloudflared (Cloudflare Tunnels) Setup
+
+See [assets/cloudflared.md](assets/cloudflared.md) for instructions on how to set up Moat behind a Cloudflare Tunnel.
 
 ## Troubleshooting
 

@@ -1,3 +1,24 @@
-listen_host: 0.0.0.0
+listen_host: "0.0.0.0"
 listen_port: 8000
-secret_key: YOUR_VERY_SECRET_KEY_CHANGE_THIS_NOW_PLEASE
+secret_key: "YOUR_VERY_SECRET_KEY_CHANGE_THIS_NOW_PLEASE" # Generate with: openssl rand -hex 32
+access_token_expire_minutes: 60
+database_url: "sqlite+aiosqlite:///./moat.db"
+
+# Public base URL for Moat's auth pages (e.g., "https://moat.yourdomain.com")
+# Required if Moat itself is behind a reverse proxy or tunnel on a different URL than it listens on.
+moat_base_url: null
+
+# Cookie domain for SSO (e.g., ".yourdomain.com" or a specific hostname)
+# Ensure this matches how your applications are accessed.
+cookie_domain: null
+
+# Docker label monitoring settings
+docker_monitor_enabled: true
+moat_label_prefix: "moat" # e.g., moat.enable, moat.hostname
+
+# Static service definitions (useful for non-Docker services or fixed targets)
+static_services:
+#  - hostname: "service1.localhost"
+#    target_url: "http://127.0.0.1:9001"
+#  - hostname: "another.example.com"
+#    target_url: "http://192.168.1.100:8080"

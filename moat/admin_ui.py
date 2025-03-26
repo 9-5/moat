@@ -17,10 +17,12 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = ""
+    error_message: str = None
 ):
-    config_data = load_config()
-    config_content = yaml.dump(config_data.model_dump(), sort_keys=False) # Changed to model_dump()
+    """
+    Display the configuration form.
+    """
+    config_content = yaml.dump(load_config().model_dump(), indent=2)
 
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
@@ -36,18 +38,18 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
+    """
+    Update the configuration based on form data.
+    """
     try:
-        # Load the config.
-        new_config = yaml.safe_load(config_content)
-
-        # Validate the config against the model.
-        validated_settings = MoatSettings(**new_config)
-
-        # Save the validated config.
-        success = await save_settings(validated_settings)
-
+        # Validate the YAML content first
+        yaml.safe_load(config_content)
+        
+        # Attempt to save the new configuration
+        success = save_settings(config_content)
+        
         if success:
-            # Settings saved successfully, trigger a redirect.
+            # Redirect back to the form with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

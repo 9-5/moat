@@ -21,27 +21,14 @@ async def init_db():
         )
     """)
     await conn.commit()
-    # Create a default user if none exist.  This simplifies initial setup.
-    cursor = await conn.execute("SELECT COUNT(*) FROM users")
-    row = await cursor.fetchone()
-    count = row[0] if row else 0
-    if count == 0:
-        print("Database: No users found, creating default admin user 'admin'.")
-        default_password = "changeme" # CHANGE THIS!
-        hashed_password = get_password_hash(default_password)
-        await conn.execute(
-            "INSERT INTO users (username, hashed_password) VALUES (?, ?)",
-            ("admin", hashed_password)
-        )
-        await conn.commit()
-        print("Database: Default admin user created.  Please change the password immediately.")
     await conn.close()
 
 async def get_user(username: str) -> Optional[UserInDB]:
     conn = await get_db_connection()
     cursor = await conn.execute("SELECT username, hashed_password FROM users WHERE username = ?", (username,))
     row = await cursor.fetchone()
- await conn.close()
+    await cursor.close()
+    await conn.close()
     if row:
         return UserInDB(username=row[0], hashed_password=row[1])
     return None
