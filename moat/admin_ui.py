@@ -20,7 +20,12 @@ async def view_config_form(
     error_message: str = ""
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(get_current_config_as_dict(), indent=2, sort_keys=False)
+    config_content = ""
+    try:
+        config_content = yaml.dump(load_config().model_dump(), indent=2) # Load as string for editing
+    except Exception as e:
+        error_message = f"Error loading configuration: {e}"
+
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -29,26 +34,22 @@ async def view_config_form(
         "error_message": error_message
     })
 
+
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    config_content: str = Form(...),
+    config_content: str = Form(...)
 ):
-    """Handles the submission of the configuration form."""
+    """Handles updating the configuration."""
+    error_message = ""
     try:
-        # Validate the submitted YAML.
-        cfg_dict = yaml.safe_load(config_content)
-        if cfg_dict is None:
-            cfg_dict = {}  # Handle empty YAML
-        validated_settings = MoatSettings(**cfg_dict) # Pydantic validation
+        # Validate YAML format
+        yaml.safe_load(config_content)
 
-        # Attempt to save the configuration
-        if await save_settings(validated_settings):
-            # Apply the changes to the runtime.  This is crucial for changes to take effect.
-            await apply_settings_changes_to_runtime(old_settings=get_settings(), new_settings=validated_settings)
-
-            # Redirect with a success flag
+        # Attempt to save and validate settings
+        success = save_settings(config_content)
+        if success:
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
