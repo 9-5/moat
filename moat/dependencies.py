@@ -17,43 +17,41 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
         
-        print(f"No token found in cookie {ACCESS_TOKEN_COOKIE_NAME}, user is anonymous.")
+        print("No access token cookie found.")
         return None
 
-    payload = decode_access_token(token)
-    if not payload:
-        print("Token is invalid.")
+    try:
+        payload = decode_access_token(token)
+        if payload is None or "sub" not in payload:
+            print("Invalid or malformed access token.")
+            return None
+        username = payload.get("sub")
+        print(f"Token decoded, username: {username}")
+        user = User(username=username) # Don't hit the DB again here
+        return user
+    except Exception as e:
+        print(f"Error decoding or validating token: {e}")
         return None
-    
-    username: str = payload.get("sub")
-    if username is None:
-        print("Token contains no subject (username).")
-        return None
-    
-    user = User(username=username)
-    print(f"User '{user.username}' found in token.")
-    return user
 
 async def get_current_user_or_redirect(request: Request) -> User:
     """
-    Tries to retrieve the current user from the session cookie.
-    If the user is not authenticated, it redirects them to the login page,
-    preserving the originally requested URL in the "next" query parameter.
+    Retrieves the current user from the access token cookie.
+    If no valid token is found, redirects to the login page with a 'next' parameter.
     """
-    cfg = get_settings()
     user = await get_current_user_from_cookie(request)
     if user is None:
-        print(f"get_current_user_or_redirect: User not authenticated, redirecting to login.")
+        cfg = get_settings()
+        
+        # URL-encode the original path to redirect back after login
+        redirect_path = quote_plus(str(request.url))
+        login_url = urljoin(str(cfg.moat_base_url), f"/moat/auth/login?next={redirect_path}")
+        
+        print(f"get_current_user_or_redirect - Not authenticated, redirecting to login at: {login_url}")
+        
+        # Craft a manual redirect response with a Set-Cookie header that deletes the cookie.
+        headers = {"Location": login_url}
 
-        # Construct the URL to redirect to after login, including scheme and hostname.
-        # Quote the next URL to handle special characters.
-        next_url = quote_plus(str(request.url))
-        login_url = urljoin(str(request.base_url), "/moat/auth/login")  # Explicitly use urljoin
-        redirect_url = f"{login_url}?next={next_url}" # Manually construct the redirect URL
-
-        print(f"Redirecting to login URL: {redirect_url}")
-        headers = {"Location": redirect_url}
-        #Also clear the cookie
+        # Craft a Set-Cookie header to delete the cookie.  Important to set attributes to match the original cookie.
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
@@ -67,5 +65,4 @@ async def get_current_user_or_redirect(request: Request) -> User:
             headers=headers
         )
         
-    print(f"User '{user.username}' authenticated successfully for {request.url}, proceeding with request.")
-    return user
+    print(f"User '{user.
