@@ -19,7 +19,7 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """Displays the configuration form with the current config."""
+    """Displays the configuration form with the current config values."""
     config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
@@ -35,17 +35,21 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration from the submitted form data."""
-    error_message = ""
+    """Handles updates to the configuration via a YAML form."""
     try:
-        # Validate YAML format
-        yaml.safe_load(config_content)
+        # Attempt to parse the YAML content
+        new_config_data = yaml.safe_load(config_content)
 
-        # Attempt to save the new configuration
-        if save_settings(config_content):
-            # Reload settings and apply runtime changes.  A more robust approach may involve
-            # diffing the settings and only applying necessary changes.
-            
+        # Validate the new config against the MoatSettings model
+        validated_settings = MoatSettings(**new_config_data)
+        
+        # Save the validated settings
+        if save_settings(validated_settings):
+            # Apply the settings changes to the runtime.
+            asyncio.create_task(apply_settings_changes_to_runtime(
+                old_settings=get_settings(), # Pass in current setting before change
+                new_settings=validated_settings
+            ))
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
@@ -62,5 +66,6 @@ async def update_config(
         "request": request,
         "current_user": current_user,
         "config_content": config_content, 
-        "error_message": error_message
+        "error_message": error_message,
+        "success": False # Ensure success is false when there's an error
     })
