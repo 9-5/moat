@@ -7,7 +7,7 @@
 3.  **`cloudflared`:** A small daemon from Cloudflare that runs on the same server as Moat. It creates a secure, outbound-only connection to Cloudflare's edge network.
 4.  **Cloudflare's Edge:** When a user accesses your publ
 ... (FILE CONTENT TRUNCATED) ...
-rvices.
+oxying.
 *   **Redirect Loops:**
     *   Verify `moat_base_url` in Moat's `config.yml` is **exactly** `https://moat.yourdomain.com` (or your equivalent).
     *   Check `X-Forwarded-Proto` and `X-Forwarded-Host` headers. Cloudflare tunnels generally set these correctly.

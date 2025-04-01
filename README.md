@@ -10,7 +10,7 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 [Features](#features)
 
-[Prerequisites](#prerequisites]
+[Prerequisites](#prerequisites)
 
 [Installation](#installation)
 
