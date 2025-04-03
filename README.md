@@ -16,7 +16,7 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 [Configuration](#configuration)
 
-[Running Moat](#running-moat)
+[Running Moat](#running_moat)
 
 [Usage](#usage)
 
