@@ -17,8 +17,35 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
         
-... (FILE CONTENT TRUNCATED) ...
-e_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        print(f"No token found in cookie for {request.url}")
+        return None
+
+    payload = decode_access_token(token)
+    if not payload:
+        print(f"Token invalid for {request.url}")
+        return None
+
+    username = payload.get("sub")
+    if username is None:
+        print(f"No username found in token for {request.url}")
+        return None
+
+    return User(username=username)
+
+async def get_current_user_or_redirect(request: Request) -> User:
+    cfg = get_settings()
+    user = await get_current_user_from_cookie(request)
+    if user is None:
+        print(f"Unauthenticated request to {request.url}, redirecting to login.")
+        # Construct the full URL for the login page with a 'next' parameter.
+        # The 'next' parameter should be the URL the user was trying to access.
+        moat_base_url = str(cfg.moat_base_url) if cfg.moat_base_url else "/"
+        next_url = quote_plus(str(request.url))  # URL-encode the 'next' URL
+        login_redirect_url = urljoin(moat_base_url, f"/moat/auth/login?next={next_url}")
+        
+        headers = {"Location": login_redirect_url} # Set the redirect URL in the headers
+        
+        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion

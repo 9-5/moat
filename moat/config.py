@@ -19,9 +19,34 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from
-... (FILE CONTENT TRUNCATED) ...
-fig: Error validating or saving new settings: {e}")
+    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
+
+    try:
+        validated_settings = MoatSettings(**config_data)
+        _settings = validated_settings
+        _config_last_modified_time = current_mtime
+        return _settings
+    except Exception as e:
+        raise ValueError(f"Error validating configuration: {e}") from e
+
+def save_settings(config_content: str) -> bool:
+    """Saves the configuration to the config.yml file. Validates data before saving."""
+    global _settings, _config_last_modified_time
+    try:
+        cfg_dict = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**cfg_dict) # Validate against the pydantic model
+
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            yaml.dump(cfg_dict, f, sort_keys=False, indent=2) # Dump the validated dict, not the model
+        
+        print(f"Config: Saved configuration to {CONFIG_FILE_PATH}")
+        _settings = validated_settings
+        _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
+        return True
+    except Exception as e:
+        print(f"Config: Error validating or saving new settings: {e}")
         return False
 
 def get_current_config_as_dict() -> dict:
