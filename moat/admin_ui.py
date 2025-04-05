@@ -4,7 +4,7 @@ from fastapi.templating import Jinja2Templates
 import yaml
 import asyncio
 
-from moat.models import User 
+from moat.models import User
 from moat.dependencies import get_current_user_or_redirect
 from moat.config import get_settings, save_settings, CONFIG_FILE_PATH, load_config
 from moat.runtime_config import apply_settings_changes_to_runtime
@@ -20,39 +20,39 @@ async def view_config_form(
     error_message: str = None
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), sort_keys=False, indent=2) # Use model_dump
-    return templates.TemplateResponse(
-        "admin_config.html",
-        {
-            "request": request,
-            "current_user": current_user,
-            "config_content": config_content,
-            "error_message": error_message,
-            "success": success
-        },
-    )
+    config_content = yaml.dump(load_config().model_dump(exclude_none=True), indent=2, sort_keys=False)
+    return templates.TemplateResponse("admin_config.html", {
+        "request": request,
+        "current_user": current_user,
+        "config_content": config_content,
+        "success": success,
+        "error_message": error_message
+    })
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    config_content: str = Form(...),
+    config_content: str = Form(...)
 ):
     """Handles the submission of the configuration form."""
     try:
-        # Attempt to save the configuration
-        success = save_settings(config_content)
+        new_config_data = yaml.safe_load(config_content)
+        # Validate the loaded YAML data against the MoatSettings model.
+        validated_settings = MoatSettings(**new_config_data)
 
-        if success:
-            # If save_settings was successful, redirect with a success message. Add query param to indicate success
+        # Save the new configuration to the file.
+        if await save_settings(validated_settings):
+            # Apply the changes to the runtime configuration.
+            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
-            error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
+            error_message = "Failed to save configuration. Check server logs for details."
 
     except yaml.YAMLError as ye:
         error_message = f"Invalid YAML format: {ye}"
-    except ValueError as ve: 
+    except ValueError as ve:
         error_message = f"Configuration validation error: {ve}"
     except Exception as e:
         error_message = f"An unexpected error occurred: {e}"
@@ -60,7 +60,7 @@ async def update_config(
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
-        "config_content": config_content, 
+        "config_content": config_content,
         "error_message": error_message,
         "success": False
     })

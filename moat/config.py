@@ -20,29 +20,34 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return _settings
 
     print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-    with open(CONFIG_FILE_PATH, 'r') as f:
-        config_data = yaml.safe_load(f)
-
     try:
-        validated_settings = MoatSettings(**config_data)
-        _settings = validated_settings
-        _config_last_modified_time = current_mtime
-        return _settings
-    except Exception as e:
-        raise ValueError(f"Error validating configuration: {e}") from e
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config_data = yaml.safe_load(f)
+            if config_data is None:
+                config_data = {} # Handle empty YAML file
+            validated_settings = MoatSettings(**config_data)
+            _settings = validated_settings
+            _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
+            return _settings
 
-def save_settings(config_content: str) -> bool:
-    """Saves the configuration to the config.yml file. Validates data before saving."""
+    except yaml.YAMLError as e:
+        raise ValueError(f"Error parsing YAML config file: {e}")
+    except Exception as e:
+        raise ValueError(f"Error loading or validating config: {e}")
+
+
+async def save_settings(new_settings: MoatSettings) -> bool:
     global _settings, _config_last_modified_time
     try:
-        cfg_dict = yaml.safe_load(config_content)
-        validated_settings = MoatSettings(**cfg_dict) # Validate against the pydantic model
-
-        with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(cfg_dict, f, sort_keys=False, indent=2) # Dump the validated dict, not the model
+        # Convert Pydantic model to dictionary, excluding `None` values
+        settings_dict = new_settings.model_dump(exclude_none=True)
         
-        print(f"Config: Saved configuration to {CONFIG_FILE_PATH}")
-        _settings = validated_settings
+        # Write the dictionary to the YAML file
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            yaml.dump(settings_dict, f, sort_keys=False, indent=2)
+
+        print(f"Config: Successfully saved new settings to {CONFIG_FILE_PATH}")
+        _settings = new_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
     except Exception as e:
