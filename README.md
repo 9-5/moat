@@ -33,7 +33,7 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 ## Troubleshooting
 
 * **"Secret key not configured" / "Moat configuration file not found"**: Ensure `config.yml` exists in the working directory and `secret_key` is set. Run `moat init-config`.
-* **Redirect loops or incorrect login URL**: Double-check `config.yml` and the `moat_base_url` setting.
+* **Redirect loops or incorrect login URL**: Double-check `moat_base_url` in `config.yml`. It must be the public URL of Moat itself.
 * **Cookies not working across subdomains**: Verify `cookie_domain` is set correctly (e.g., `.yourdomain.com`).
 * **Docker services not appearing**:
    * Ensure `docker_monitor_enabled: true`.

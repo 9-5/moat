@@ -20,34 +20,41 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return _settings
 
     print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
+    
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
+    
     try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
-            if config_data is None:
-                config_data = {} # Handle empty YAML file
-            validated_settings = MoatSettings(**config_data)
-            _settings = validated_settings
-            _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
-            return _settings
-
-    except yaml.YAMLError as e:
-        raise ValueError(f"Error parsing YAML config file: {e}")
+        validated_settings = MoatSettings(**config_data) # Validate immediately
     except Exception as e:
-        raise ValueError(f"Error loading or validating config: {e}")
+        print(f"Config: Error validating loaded configuration: {e}")
+        raise
 
+    _settings = validated_settings
+    _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
+    return _settings
 
-async def save_settings(new_settings: MoatSettings) -> bool:
+def get_settings() -> MoatSettings:
+    if _settings is None:
+        raise RuntimeError("Settings not initialized. Ensure load_config() has been called (e.g., at app startup).")
+    return _settings
+
+def save_settings(config_content: str) -> bool:
     global _settings, _config_last_modified_time
-    try:
-        # Convert Pydantic model to dictionary, excluding `None` values
-        settings_dict = new_settings.model_dump(exclude_none=True)
-        
-        # Write the dictionary to the YAML file
-        with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(settings_dict, f, sort_keys=False, indent=2)
 
-        print(f"Config: Successfully saved new settings to {CONFIG_FILE_PATH}")
-        _settings = new_settings
+    try:
+        # Load the configuration from the string
+        config_data = yaml.safe_load(config_content)
+
+        # Validate the configuration against the MoatSettings model
+        validated_settings = MoatSettings(**config_data)
+
+        # Dump the validated settings back to YAML
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            yaml.dump(validated_settings.model_dump(), f, sort_keys=False, default_flow_style=False) # Use model_dump instead of dict
+
+        print(f"Config: Saved new configuration to {CONFIG_FILE_PATH}")
+        _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
     except Exception as e:

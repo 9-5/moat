@@ -25,42 +25,56 @@ async def process_container_labels(container, action: str):
     cfg = get_settings()
     labels = container.labels
     prefix = cfg.moat_label_prefix
-    enable_label = f"{prefix}.enable"
-    hostname_label = f"{prefix}.hostname"
-    port_label = f"{prefix}.port"
-
-    if enable_label not in labels or hostname_label not in labels or port_label not in labels:
-        print(f"Docker Monitor: Skipping container {container.name} ({container.short_id}) - missing required labels.")
+    
+    if f"{prefix}.enable" not in labels:
+        print(f"Docker Monitor: Container {container.name} ({container.short_id}) does not have '{prefix}.enable' label, skipping.")
+        await global_registry.unregister_service_by_container_id(container.id)
         return
 
-    if labels[enable_label].lower() != "true":
-        print(f"Docker Monitor: Skipping container {container.name} ({container.short_id}) - enable label is not 'true'.")
-        return
-
-    hostname = labels[hostname_label]
-    try:
-        port = int(labels[port_label])
-    except ValueError:
-        print(f"Docker Monitor: Invalid port value '{labels[port_label]}' for container {container.name} ({container.short_id}).")
+    if labels.get(f"{prefix}.enable", "false").lower() != "true":
+        print(f"Docker Monitor: Container {container.name} ({container.short_id}) has '{prefix}.enable' set to false, unregistering.")
+        await global_registry.unregister_service_by_container_id(container.id)
         return
     
-    target_url = f"http://{container.name}:{port}"  # Internal Docker network URL
+    hostname = labels.get(f"{prefix}.hostname")
+    port = labels.get(f"{prefix}.port")
+
+    if not hostname or not port:
+        print(f"Docker Monitor: Container {container.name} ({container.short_id}) missing required 'hostname' or 'port' labels, skipping registration.")
+        await global_registry.unregister_service_by_container_id(container.id)
+        return
+
+    try:
+        port = int(port)
+    except ValueError:
+        print(f"Docker Monitor: Container {container.name} ({container.short_id}) has invalid port '{port}', skipping registration.")
+        await global_registry.unregister_service_by_container_id(container.id)
+        return
+
+    target_url = f"http://{container.name}:{port}" # Inside docker network, use container name
 
     if action == "start":
-        print(f"Docker Monitor: Adding service {hostname} -> {target_url} (Container: {container.name})")
-        await global_registry.register_service(hostname, target_url)
+        print(f"Docker Monitor: Registering service {hostname} -> {target_url} for container {container.name} ({container.short_id})")
+        await global_registry.register_service(hostname, target_url, container.id)
     elif action == "stop":
-        print(f"Docker Monitor: Removing service {hostname} (Container: {container.name})")
-        await global_registry.unregister_service(hostname)
+        print(f"Docker Monitor: Unregistering service for container {container.name} ({container.short_id}) due to stop event.")
+        await global_registry.unregister_service_by_container_id(container.id)
+    else:
+        print(f"Docker Monitor: Unknown action '{action}' for container {container.name} ({container.short_id}), skipping.")
 
 async def watch_docker_events():
     global _monitor_task_should_stop, _monitor_task_active
-    _monitor_task_active = True
-    print("Docker Monitor: Starting event watcher...")
+    if _monitor_task_active:
+        print("Docker Monitor: Already running, not starting a new instance.")
+        return
 
+    _monitor_task_active = True
+    _monitor_task_should_stop.clear()
+    
+    print("Docker Monitor: Starting event watcher...")
     try:
         client = docker.from_env()
-        async for event in client.events(decode=True):
+        async for event in client.events(filters={"type": "container", "event": ["start", "stop"]}, decode=True):
             if _monitor_task_should_stop.is_set():
                 print("Docker Monitor: Exiting event watcher.")
                 break
@@ -75,4 +89,16 @@ async def watch_docker_events():
                         if action == "stop":
                             # Container stop event might arrive after container is already gone
                             # This is normal, we can just unregister by container id
-                            await global_registry.unregisterservice_b
+                            await global_registry.unregister_service_by_container_id(event["id"])
+                        else:
+                            print(f"Docker Monitor: Container {event['id'][:12]} not found for event {action}, skipping.")
+                    except Exception as e:
+                        print(f"Docker Monitor: Error processing event for {event['id'][:12]}: {e}")
+    except docker.errors.DockerException as e:
+        print(f"Docker Monitor: DockerException in event stream: {e}. Is Docker running and accessible? Stopping monitor.")
+    except Exception as e:
+        print(f"Docker Monitor: Error in event stream: {e}. Stopping monitor.")
+    finally:
+        print("Docker Monitor: Event watcher stopped.")
+        _monitor_task_active = False
+        _monitor_task_should_stop.clear()

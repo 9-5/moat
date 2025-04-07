@@ -17,10 +17,10 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = None
+    error_message: str = ""
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(exclude_none=True), indent=2, sort_keys=False)
+    config_content = yaml.dump(load_config().model_dump(), indent=2)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -28,6 +28,7 @@ async def view_config_form(
         "success": success,
         "error_message": error_message
     })
+
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
@@ -37,18 +38,16 @@ async def update_config(
 ):
     """Handles the submission of the configuration form."""
     try:
-        new_config_data = yaml.safe_load(config_content)
-        # Validate the loaded YAML data against the MoatSettings model.
-        validated_settings = MoatSettings(**new_config_data)
+        # Validate YAML
+        yaml.safe_load(config_content)
 
-        # Save the new configuration to the file.
-        if await save_settings(validated_settings):
-            # Apply the changes to the runtime configuration.
-            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
+        # Attempt to save the configuration
+        if save_settings(config_content):
+            # If save is successful, redirect back to the form with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
-            error_message = "Failed to save configuration. Check server logs for details."
+            error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
 
     except yaml.YAMLError as ye:
         error_message = f"Invalid YAML format: {ye}"
