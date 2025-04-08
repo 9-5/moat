@@ -16,19 +16,16 @@ templates = Jinja2Templates(directory="moat/templates")
 async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    success: bool = False,
-    error_message: str = ""
+    success: bool = False
 ):
-    """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(), indent=2)
+    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
-        "success": success,
-        "error_message": error_message
+        "error_message": None,
+        "success": success
     })
-
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
@@ -36,14 +33,22 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Handles the submission of the configuration form."""
+    error_message = None
+
     try:
-        # Validate YAML
+        # Validate YAML format
         yaml.safe_load(config_content)
 
-        # Attempt to save the configuration
+        # Attempt to save and validate settings
         if save_settings(config_content):
-            # If save is successful, redirect back to the form with a success message
+            # Apply settings after saving
+            old_settings = get_settings() # Save existing before reloading
+            load_config(force_reload=True) # Reload config.
+            new_settings = get_settings()
+
+            await apply_settings_changes_to_runtime(old_settings, new_settings)
+
+            # Redirect with success parameter
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

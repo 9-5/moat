@@ -17,44 +17,8 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
         
-        print("No access token found in cookie.")
-        return None
-
-    try:
-        payload = decode_access_token(token)
-        if not payload:
-            print("Invalid access token found in cookie.")
-            return None
-
-        username = payload.get("sub")
-        if not username:
-            print("No username found in decoded access token.")
-            return None
-
-        return User(username=username)
-    except Exception as e:
-        print(f"Error decoding access token: {e}")
-        return None
-
-async def get_current_user_or_redirect(request: Request) -> User:
-    """
-    Authenticates the user via the access token cookie.
-    If authentication fails, redirects to the login page.
-    """
-    cfg = get_settings()
-    user = await get_current_user_from_cookie(request)
-    if not user:
-        print(f"No user found for {request.url}, redirecting to login.")
-
-        login_url = urljoin(str(request.base_url), "/moat/auth/login")
-
-        # Construct the 'next' URL
-        current_path = request.url.path
-        encoded_next_url = quote_plus(current_path)
-        full_login_url_with_redirect = f"{login_url}?next={encoded_next_url}"
-
-        headers = {"Location": full_login_url_with_redirect}
-        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+... (FILE CONTENT TRUNCATED) ...
+e_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion
