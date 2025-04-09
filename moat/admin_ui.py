@@ -16,15 +16,16 @@ templates = Jinja2Templates(directory="moat/templates")
 async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    success: bool = False
+    success: bool = False,
+    error_message: str = ""
 ):
-    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), indent=2, sort_keys=False)
+    config_content = yaml.dump(load_config().model_dump(), sort_keys=False, indent=2)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
-        "error_message": None,
-        "success": success
+        "success": success,
+        "error_message": error_message
     })
 
 @router.post("/config", response_class=HTMLResponse)
@@ -33,22 +34,17 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    error_message = None
-
     try:
-        # Validate YAML format
-        yaml.safe_load(config_content)
+        config_data = yaml.safe_load(config_content)
 
-        # Attempt to save and validate settings
-        if save_settings(config_content):
-            # Apply settings after saving
-            old_settings = get_settings() # Save existing before reloading
-            load_config(force_reload=True) # Reload config.
-            new_settings = get_settings()
+        try:
+            validated_settings = MoatSettings(**config_data)
+        except Exception as validation_error:
+            raise ValueError(f"Configuration validation failed: {validation_error}") from validation_error
 
-            await apply_settings_changes_to_runtime(old_settings, new_settings)
-
-            # Redirect with success parameter
+        if save_settings(validated_settings):
+            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
+            
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

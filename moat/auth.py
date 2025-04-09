@@ -26,34 +26,33 @@ async def authenticate_user(username: str, password: str) -> Optional[User]:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    cfg = get_settings()
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "moat_base_url": cfg.moat_base_url})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    cfg = get_settings()
     user = await authenticate_user(username, password)
     if not user:
-        login_url_with_error = request.url.include_query_params(error="Invalid username or password")
-        return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
+        cfg = get_settings()
+        error_message = "Invalid username or password"
+        login_url_with_error = f"{cfg.moat_base_url}/moat/auth/login?error={quote_plus(error_message)}"
+        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_302_FOUND)
 
+    # Determine if connection is secure for the cookie
+    cfg = get_settings()
+    is_secure_connection_for_cookie = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
     access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
 
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)  # Redirect to home
-    
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
-    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
-
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER) # Redirect to root
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
-        domain=cookie_domain_setting,
         path="/",
         secure=is_secure_connection_for_cookie,
         httponly=True,
@@ -72,8 +71,19 @@ async def logout(request: Request):
     if cfg.moat_base_url:
         logout_redirect_target_url = str(cfg.moat_base_url)
     
-    print(f"GET /log... (FILE CONTENT TRUNCATED) ...
-  ACCESS_TOKEN_COOKIE_NAME,
+    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+
+    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie_delete = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
+
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
         path="/",
         domain=cookie_domain_setting,
         secure=is_secure_connection_for_cookie_delete,
