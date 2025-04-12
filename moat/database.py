@@ -24,3 +24,28 @@ async def init_db():
     await conn.close()
 
 async def get_user(username: str) -> Optional[UserInDB]:
+    conn = await get_db_connection()
+    cursor = await conn.execute("SELECT username, hashed_password FROM users WHERE username = ?", (username,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    await conn.close()
+    if row:
+        return UserInDB(username=row[0], hashed_password=row[1])
+    return None
+
+async def create_user_db(user_data: User, password: str) -> UserInDB:
+    hashed_password = get_password_hash(password)
+    user_in_db = UserInDB(username=user_data.username, hashed_password=hashed_password)
+
+    conn = await get_db_connection()
+    try:
+        await conn.execute(
+            "INSERT INTO users (username, hashed_password) VALUES (?, ?)",
+            (user_in_db.username, user_in_db.hashed_password)
+        )
+        await conn.commit()
+    except aiosqlite.IntegrityError:
+        await conn.close()
+        raise ValueError(f"User {user_data.username} already exists")
+    await conn.close()
+    return user_in_db

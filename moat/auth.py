@@ -17,15 +17,16 @@ router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
 async def authenticate_user(username: str, password: str) -> Optional[User]:
-    user = await get_user(username)
-    if not user:
+    """Authenticates a user against the database."""
+    user_in_db = await get_user(username)
+    if not user_in_db:
         return None
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(password, user_in_db.hashed_password):
         return None
-    return User(username=user.username)
+    return User(username=user_in_db.username)
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, error: str = None):
+async def login_form(request: Request, error: Optional[str] = None):
     """Displays the login form."""
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
@@ -34,19 +35,27 @@ async def login(request: Request, username: str = Form(...), password: str = For
     """Handles user login."""
     user = await authenticate_user(username, password)
     if not user:
-        login_url_with_error = request.url.include_query_params(error="Invalid username or password")
-        return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
+        # Properly URL-encode the error message for the redirect
+        error_message = "Invalid username or password"
+        encoded_error_message = quote_plus(error_message)
+        login_url_with_error = f"/moat/auth/login?error={encoded_error_message}"
 
-    # Generate access token
-    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
+        return RedirectResponse(login_url_with_error, status_code=status.HTTP_303_SEE_OTHER)
+        #raise HTTPException(
+        #    status_code=status.HTTP_401_UNAUTHORIZED,
+        #    detail="Incorrect username or password",
+        #    headers={"WWW-Authenticate": "Basic"},
+        #)
+    
+    cfg = get_settings()
+    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
 
-    # Set the access token in a cookie
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)  # Redirect to home page or a protected route
-    
-    cookie_domain_setting = get_settings().cookie_domain
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+    cookie_domain_setting = cfg.cookie_domain
     is_secure_connection_for_cookie = (
         request.url.scheme == "https" or
         request.headers.get("x-forwarded-proto") == "https"
@@ -74,4 +83,23 @@ async def logout(request: Request):
     moat_base_url = cfg.moat_base_url
     logout_redirect_target_url = str(moat_base_url) if moat_base_url else "/"
     
-    print(f"GET /log
+    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+
+    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie_delete = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
+
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        path="/",
+        domain=cookie_domain_setting,
+        secure=is_secure_connection_for_cookie_delete,
+        httponly=True,
+        samesite="Lax"
+    )
+    return response

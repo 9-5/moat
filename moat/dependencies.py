@@ -16,3 +16,59 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
+        print("No access token found in cookie.")
+        return None
+
+    payload = decode_access_token(token)
+    if not payload:
+        print("Invalid access token in cookie.")
+        return None
+
+    username = payload.get("sub")
+    if not username:
+        print("No username found in access token.")
+        return None
+
+    user_in_db = await get_user(username)
+    if not user_in_db:
+        print(f"User '{username}' not found in database.")
+        return None
+
+    user = User(username=user_in_db.username)
+    print(f"User '{user.username}' authenticated from cookie.")
+    return user
+
+async def get_current_user_or_redirect(request: Request) -> User:
+    """
+    Retrieves the current user from the cookie. If the user is not authenticated,
+    redirects to the login page.
+    """
+    user = await get_current_user_from_cookie(request)
+
+    if not user:
+        cfg = get_settings()
+
+        # Construct the login URL, including a redirect back to the originally requested page
+        login_url = "/moat/auth/login"
+        current_url = str(request.url)  # The full URL the user is trying to access
+        encoded_redirect_url = quote_plus(current_url) # URL-encode the redirect URL
+        login_url_with_redirect = f"{login_url}?next={encoded_redirect_url}"
+
+        headers = {"Location": login_url_with_redirect}
+
+        # Properly delete the cookie
+        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+            delete_cookie_header_val += "; Secure"
+        if cfg.cookie_domain: # Add domain if configured for deletion
+            delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
+        headers["Set-Cookie"] = delete_cookie_header_val
+
+        raise HTTPException(
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            detail="Not authenticated, redirecting to login.",
+            headers=headers
+        )
+        
+    print(f"User '{user.username}' authenticated successfully for {request.url}, proceeding with request.")
+    return user

@@ -19,8 +19,8 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """Displays the configuration form with the current configuration."""
-    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), sort_keys=False)
+    """Displays the configuration form."""
+    config_content = yaml.dump(load_config(force_reload=True).model_dump(exclude_unset=True), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -29,26 +29,31 @@ async def view_config_form(
         "error_message": error_message
     })
 
+def construct_redirect_url_with_query_params(url: str, params: dict) -> str:
+    """Constructs a URL with query parameters, encoding the parameters for safety."""
+    query_string = "&".join([f"{quote_plus(key)}={quote_plus(str(value))}" for key, value in params.items()])
+    if "?" in url:
+        return f"{url}&{query_string}"
+    else:
+        return f"{url}?{query_string}"
+
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration based on the submitted form data."""
+    """Handles updating the configuration."""
+    error_message = ""
     try:
-        # Attempt to parse the YAML content
-        yaml_data = yaml.safe_load(config_content)
+        # Validate YAML format
+        config_data = yaml.safe_load(config_content)
 
-        # Validate the YAML data against the MoatSettings model
-        validated_settings = MoatSettings(**yaml_data)
+        # Validate against the MoatSettings model
+        validated_settings = MoatSettings(**config_data)
 
-        # Save the validated settings to the configuration file
-        if save_settings(validated_settings):
-            # Apply the settings changes to the runtime environment
-            asyncio.create_task(apply_settings_changes_to_runtime(old_settings=get_settings(), new_settings=validated_settings))
-
-            # Redirect back to the config form with a success message
+        # Save the new configuration
+        if await save_settings(validated_settings):
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
