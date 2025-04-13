@@ -16,47 +16,39 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        print("No access token found in cookie.")
+        print(f"No access token cookie found for {request.url}.")
         return None
 
-    payload = decode_access_token(token)
-    if not payload:
-        print("Invalid access token in cookie.")
-        return None
+    try:
+        payload = decode_access_token(token)
+        if payload is None:
+            print(f"Invalid or expired token found in cookie for {request.url}.")
+            return None
 
-    username = payload.get("sub")
-    if not username:
-        print("No username found in access token.")
-        return None
+        username: str = payload.get("sub")
+        if username is None:
+            print(f"No username found in decoded token for {request.url}.")
+            return None
 
-    user_in_db = await get_user(username)
-    if not user_in_db:
-        print(f"User '{username}' not found in database.")
+        user = User(username=username)
+        print(f"Successfully retrieved user '{user.username}' from cookie for {request.url}.")
+        return user
+    except Exception as e:
+        print(f"An unexpected error occurred during token decoding: {e}")
         return None
-
-    user = User(username=user_in_db.username)
-    print(f"User '{user.username}' authenticated from cookie.")
-    return user
 
 async def get_current_user_or_redirect(request: Request) -> User:
-    """
-    Retrieves the current user from the cookie. If the user is not authenticated,
-    redirects to the login page.
-    """
+    cfg = get_settings()
     user = await get_current_user_from_cookie(request)
-
-    if not user:
-        cfg = get_settings()
-
-        # Construct the login URL, including a redirect back to the originally requested page
-        login_url = "/moat/auth/login"
-        current_url = str(request.url)  # The full URL the user is trying to access
-        encoded_redirect_url = quote_plus(current_url) # URL-encode the redirect URL
-        login_url_with_redirect = f"{login_url}?next={encoded_redirect_url}"
+    if user is None:
+        # Construct the 'next' URL parameter to redirect back after login
+        current_url_quoted = quote_plus(str(request.url))
+        login_url_with_redirect = urljoin(str(request.url_for("auth:login_form")), f"?next={current_url_quoted}")
+        print(f"Redirecting unauthenticated user to login page: {login_url_with_redirect}")
 
         headers = {"Location": login_url_with_redirect}
 
-        # Properly delete the cookie
+        #Clear the cookie if it exists (logout).  Important to prevent redirect loops!
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
