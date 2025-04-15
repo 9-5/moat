@@ -20,32 +20,32 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return _settings
 
     print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-    try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
         if config_data is None:
-            config_data = {}
-        validated_settings = MoatSettings(**config_data)
-        _settings = validated_settings
-        _config_last_modified_time = current_mtime
-        return _settings
-    except Exception as e:
-        print(f"Config: Error loading or validating configuration: {e}")
-        raise
+            config_data = {}  # Treat empty file as empty dict
+        try:
+            _settings = MoatSettings(**config_data)
+            _config_last_modified_time = current_mtime
+            return _settings
+        except Exception as e:
+            raise ValueError(f"Error parsing config.yml: {e}") from e
 
-def save_settings(config_content: str) -> bool:
+def get_settings() -> MoatSettings:
+    if _settings is None:
+        raise RuntimeError("Settings not initialized. Ensure config.load_config() has been called.")
+    return copy.deepcopy(_settings) # Return a copy to prevent accidental modification
+
+async def save_settings(validated_settings: MoatSettings) -> bool:
     global _settings, _config_last_modified_time
     try:
-        # First, validate the YAML
-        cfg_dict = yaml.safe_load(config_content)
-
-        # Then, validate against the Pydantic model
-        validated_settings = MoatSettings(**cfg_dict)
-
-        # If both validations pass, save the config
+        # Convert Pydantic model back to a dictionary
+        config_data = validated_settings.model_dump()
+        
+        # Write the dictionary to the YAML file
         with open(CONFIG_FILE_PATH, 'w') as f:
-            print(f"Config: Saving configuration to {CONFIG_FILE_PATH}")
-            yaml.dump(cfg_dict, f, sort_keys=False)
+            yaml.dump(config_data, f, sort_keys=False)
+        print(f"Config: Saved new settings to {CONFIG_FILE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
