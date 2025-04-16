@@ -17,11 +17,10 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = ""
+    error_message: str = None
 ):
-    """Displays the Moat configuration form."""
-    config_content = yaml.dump(load_config().model_dump(), indent=2)
-
+    """Displays the configuration form."""
+    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -36,22 +35,20 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Handles updating the Moat configuration."""
+    """Handles the submission of the configuration form."""
     try:
-        # Attempt to parse the YAML
-        new_config_data = yaml.safe_load(config_content)
-        
-        # Validate the new configuration
-        validated_settings = MoatSettings(**new_config_data)
-        
-        # Save the new configuration to file
+        # Validate the YAML content
+        cfg_dict = yaml.safe_load(config_content)
+        if cfg_dict is None:
+            cfg_dict = {}  # Treat empty YAML as an empty dictionary
+        validated_settings = MoatSettings(**cfg_dict) # Raises ValueError on validation failure.
+
+        # Save the validated settings
         if await save_settings(validated_settings):
-            # Apply the settings changes to runtime
-            await apply_settings_changes_to_runtime(
-                old_settings=get_settings(),
-                new_settings=validated_settings
-            )
-            # Redirect with success message as query parameter.
+            # Apply the changes to the runtime
+            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
+
+            # Redirect back to the form with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
