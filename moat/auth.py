@@ -16,55 +16,41 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str) -> Optional[User]:
-    """
-    Authenticates a user against the database.
-    """
+async def authenticate_user(username: str, password: str):
     user = await get_user(username)
     if not user:
-        return None
+        return False
     if not verify_password(password, user.hashed_password):
-        return None
-    return User(username=user.username)
+        return False
+    return user
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
-    """
-    Displays the login form.
-    """
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
-@router.post("/login", response_class=HTMLResponse)
+@router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """
-    Handles user login.
-    """
-    cfg = get_settings()
     user = await authenticate_user(username, password)
-    if not user:
-        # Show the login form again with an error message
-        return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid username or password"})
+    cfg = get_settings()
 
-    # Create access token
+    if not user:
+        login_url_with_error = request.url.include_query_params(error="Invalid credentials")
+        return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
+
     access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
 
-    # Determine the redirect target
-    parsed_url = urlparse(str(request.base_url)) # str() to convert URL object to string
-    login_redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
-    print(f"POST /login - Redirecting to: {login_redirect_target_url} after login.")
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
-    # Set the access token in a cookie and redirect
-    response = RedirectResponse(login_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
     cookie_domain_setting = cfg.cookie_domain
     is_secure_connection_for_cookie = (
         request.url.scheme == "https" or
         request.headers.get("x-forwarded-proto") == "https"
     )
-    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
 
+    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
@@ -73,21 +59,41 @@ async def login(request: Request, username: str = Form(...), password: str = For
         secure=is_secure_connection_for_cookie,
         httponly=True,
         samesite="Lax",
-        max_age=int(access_token_expires.total_seconds()),
+        max_age=access_token_expires.total_seconds()
     )
     return response
 
 @router.get("/logout")
 async def logout(request: Request):
-    """
-    Handles user logout.
-    """
     cfg = get_settings()
+    
+    # Determine redirect target.
+    logout_redirect_target_url = "/" # Default: Home page
+    
+    # Attempt to grab `next` query parameter. URL-decode it in case it's URL-encoded.
+    if "next" in request.query_params:
+        try:
+            potential_redirect_url = unquote_plus(request.query_params["next"])
+            urlparse(potential_redirect_url) # Validate it's a valid URL (basic check)
 
-    # Determine the redirect target after logout
-    parsed_url = urlparse(str(request.base_url))  # Ensure base_url is a string
-    logout_redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
-    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+            # Important: Ensure the redirect target is within the service's base URL.
+            # This prevents open redirect vulnerabilities.
+            # This check is ONLY done if moat_base_url is set, because then Moat is acting as a gateway.
+            if cfg.moat_base_url:
+                print(f"GET /logout - Validating redirect target '{potential_redirect_url}' against moat_base_url: '{cfg.moat_base_url}'")
+                is_valid_redirect = potential_redirect_url.startswith(str(cfg.moat_base_url))
+                if is_valid_redirect:
+                    logout_redirect_target_url = potential_redirect_url
+                    print(f"GET /logout - Redirect target '{logout_redirect_target_url}' is valid (within moat_base_url)")
+                else:
+                    print(f"GET /logout - Redirect target '{potential_redirect_url}' is INVALID (outside moat_base_url), falling back to home page.")
+            else:
+                logout_redirect_target_url = potential_redirect_url # Allow if no moat_base_url is configured
+
+        except Exception as e:
+            print(f"GET /logout - Invalid 'next' parameter: {e}. Redirecting to home page.")
+
+    print(f"GET /log out - Redirecting to: {logout_redirect_target_url} after logout.")
 
     response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
     

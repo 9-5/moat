@@ -20,26 +20,32 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return _settings
 
     print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
+    
     try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
-            if config_data is None:
-                config_data = {}  # Treat empty YAML as an empty dictionary
         validated_settings = MoatSettings(**config_data)
-        _settings = validated_settings
-        _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
-        return _settings
     except Exception as e:
-        print(f"Config: Error loading or validating configuration: {e}")
-        raise
+        print(f"Config: Error validating configuration: {e}")
+        raise # Re-raise the exception to prevent Moat from starting with invalid config
+    
+    _settings = validated_settings
+    _config_last_modified_time = current_mtime
+    return _settings
 
-async def save_settings(validated_settings: MoatSettings) -> bool:
+async def save_settings(settings: MoatSettings) -> bool:
     global _settings, _config_last_modified_time
     try:
+        # Validate settings *before* saving.
+        validated_settings = MoatSettings(**settings.model_dump()) # Re-validate.
+
+        cfg_dict = validated_settings.model_dump()
+
+        # Write the validated settings to the config file.
         with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(validated_settings.model_dump(), f, sort_keys=False, default_flow_style=False)
-        print(f"Config: Saved new configuration to {CONFIG_FILE_PATH}")
+            print(f"Config: Saving configuration to {CONFIG_FILE_PATH}")
+            yaml.dump(cfg_dict, f, sort_keys=False)
+
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True

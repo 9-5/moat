@@ -17,17 +17,37 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = None
+    error_message: str = ""
 ):
-    """Displays the configuration form."""
     config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
+
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
-        "success": success,
-        "error_message": error_message
+        "error_message": error_message,
+        "success": success
     })
+
+def add_success_parameter_to_query_params(url: str, success: bool) -> str:
+    """Adds or updates the 'success' parameter in a URL's query string."""
+    from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query)
+    query_params['success'] = [str(success).lower()]  # Ensure boolean is lowercase string
+
+    encoded_query_string = urlencode(query_params, doseq=True) # doseq handles lists properly
+    
+    new_url = urlunparse((
+        parsed_url.scheme,
+        parsed_url.netloc,
+        parsed_url.path,
+        parsed_url.params,
+        encoded_query_string,
+        parsed_url.fragment
+    ))
+    return new_url
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
@@ -35,21 +55,19 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Handles the submission of the configuration form."""
+    error_message = ""
     try:
-        # Validate the YAML content
-        cfg_dict = yaml.safe_load(config_content)
-        if cfg_dict is None:
-            cfg_dict = {}  # Treat empty YAML as an empty dictionary
-        validated_settings = MoatSettings(**cfg_dict) # Raises ValueError on validation failure.
+        # Attempt to parse the YAML content
+        new_config_data = yaml.safe_load(config_content)
 
-        # Save the validated settings
+        # Validate the new configuration using the MoatSettings model
+        validated_settings = MoatSettings(**new_config_data)
+
+        # Save the new configuration to the file
         if await save_settings(validated_settings):
-            # Apply the changes to the runtime
-            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
-
-            # Redirect back to the form with a success message
-            redirect_url = request.url.include_query_params(success=True)
+            # Construct a redirect URL, preserving existing query parameters and adding success=true
+            redirect_url = request.url
+            redirect_url = add_success_parameter_to_query_params(str(redirect_url), success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
