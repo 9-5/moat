@@ -8,50 +8,51 @@ from moat.models import User
 from moat.dependencies import get_current_user_or_redirect
 from moat.config import get_settings, save_settings, CONFIG_FILE_PATH, load_config
 from moat.runtime_config import apply_settings_changes_to_runtime
+from urllib.parse import urlencode
 
 router = APIRouter(prefix="/moat/admin", tags=["admin_ui"])
 templates = Jinja2Templates(directory="moat/templates")
+
+def create_query_params(success: bool):
+    """Helper function to create query parameters for redirects."""
+    query_params = {"success": str(success).lower()}
+    return "?" + urlencode(query_params)
 
 @router.get("/config", response_class=HTMLResponse)
 async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = None
+    error_message: str = None,
 ):
-    """Displays the configuration form with the current config."""
+    """Displays the configuration form."""
     config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
-        "success": success,
-        "error_message": error_message
+        "error_message": error_message,
+        "success": success
     })
-
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    config_content: str = Form(...)
+    config_content: str = Form(...),
 ):
-    """
-    Updates the configuration based on the submitted form data.
-    """
+    """Handles the submission of the configuration form."""
     try:
-        # Attempt to parse the YAML
-        new_config_data = yaml.safe_load(config_content)
+        # Attempt to parse the YAML content
+        yaml_data = yaml.safe_load(config_content)
 
-        # Validate the config using MoatSettings
-        validated_settings = MoatSettings(**new_config_data)
+        # Validate the YAML data against the MoatSettings model
+        validated_settings = MoatSettings(**yaml_data)
 
-        # Save the new configuration to file
+        # Save the validated settings
         if save_settings(validated_settings):
-            # Apply the changes to the runtime
-            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
-
-            # Redirect back to the config page with a success message
+            #If settings are saved correctly, apply them to the runtime.
+            await apply_settings_changes_to_runtime(old_settings=get_settings(), new_settings=validated_settings)
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

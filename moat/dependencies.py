@@ -16,48 +16,42 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        print("No access token found in cookie.")
+        print(f"No token found in cookie.")
         return None
-
+    
     payload = decode_access_token(token)
     if not payload:
-        print("Invalid or expired access token in cookie.")
+        print(f"Invalid token found in cookie.")
         return None
-
+    
     username = payload.get("sub")
     if not username:
-        print("No username found in access token.")
+        print(f"No username found in token payload.")
         return None
 
     return User(username=username)
 
 async def get_current_user_or_redirect(request: Request) -> User:
     """
-    Checks for a valid access token in the cookie.
-    If found, returns the authenticated user.
-    Otherwise, redirects to the login page.
+    Attempts to get the current user from the access token cookie.
+    If the user is not authenticated, it redirects them to the login page.
     """
+    cfg = get_settings()
     user = await get_current_user_from_cookie(request)
-    if user is None:
-        cfg = get_settings()
-
-        # Determine the redirect URL.  If moat_base_url is configured, use that.  Otherwise, use "/moat/auth/login"
-        login_redirect_url = "/moat/auth/login"
-        if cfg.moat_base_url:
-            # Quote the *full* URL, so that the "next" parameter is properly encoded.
-            next_url = quote_plus(str(request.url))
-            login_redirect_url = urljoin(str(cfg.moat_base_url), f"/moat/auth/login?next={next_url}")
-            print(f"No valid session. Redirecting to login via moat_base_url: {login_redirect_url}")
-        else:
-            # If no moat_base_url is provided, assume we're serving from the root.
-            next_url = quote_plus(str(request.url)) # Original target URL
-            login_redirect_url = f"/moat/auth/login?next={next_url}"
-            print(f"No valid session. Redirecting to login: {login_redirect_url}")
+    if not user:
+        print(f"User not authenticated, redirecting to login.")
         
-        headers = {"Location": login_redirect_url}
-
-        # Clear the cookie by setting it to expire immediately.
-        # This is important to prevent redirect loops if the cookie is invalid.
+        # Construct the redirect URL, including the current path as the "next" parameter
+        login_url = "/moat/auth/login"
+        
+        # URL-encode the current path to avoid issues with special characters
+        safe_redirect_url = quote_plus(str(request.url))
+        redirect_url_with_next = f"{login_url}?next={safe_redirect_url}"
+        
+        #Manually construct the headers to set the cookie
+        headers = {"Location": redirect_url_with_next}
+        
+        #Construct delete cookie header to force browser to delete the cookie immediately.
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"

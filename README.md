@@ -10,7 +10,7 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 [Features](#features)
 
-[Prerequisites](#prerequisites)
+[Prerequisites](#prerequisites]
 
 [Installation](#installation)
 
@@ -26,47 +26,51 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 ## Screenshots
 <div align="center">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-b154-4754-8f7a-6a1950e43067/moat-login.png" width="300" />
-<img src="https://github.com/user-attachments/assets/6e1185ff-9410-4dd3-bd72-5298b0743197/moat-admin.png" width="300" />
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-9418-67651221e656/moat_login.png" width="400" height="250">
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-67651221e656/moat_protected.png" width="400" height="250">
 </div>
 
 ## Features
 
-*   **Authentication**: User login with password protection.
-*   **Reverse Proxy**: Routes traffic to backend services based on hostname.
-*   **Service Discovery**: Automatically discovers services via Docker labels.
-*   **Static Configuration**: Define services manually in the `config.yml` file.
-*   **Admin UI**: Web interface to manage settings, create users, and view service status.
-*	**Cloudflare Tunnel**: Guide to set up moat with Cloudflare tunnels for secure remote access.
+*   **Authentication**: Secure your applications with username/password authentication.
+*   **Reverse Proxy**: Route traffic to your applications based on hostname.
+*   **Service Discovery**: Automatically discover services via Docker labels.
+*   **Single Sign-On (SSO)**: Authenticate once and access multiple applications.
+*   **Centralized Configuration**: Manage all your services from a single `config.yml` file.
+*   **Admin UI**: Web interface to manage configuration.
+*   **Cloudflare Tunnel Support**: Route traffic through Cloudflare's edge network.
 
 ## Prerequisites
 
-*   Python 3.7+
-*   Docker (if using Docker service discovery)
+*   Python 3.9+
+*   Docker (optional, for service discovery)
 
 ## Installation
 
 ```bash
-git clone https://github.com/a7i/moat.git
+git clone https://github.com/your-username/moat.git
 cd moat
 python -m venv venv
-source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
+source venv/bin/activate  # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
 ## Configuration
 
-Moat uses a `config.yml` file for configuration. An example configuration is provided in `config.example.yml`.
+Moat is configured via a `config.yml` file. An example configuration is provided in `config.example.yml`. You can initialize a new configuration file with:
 
-1.  **Initialize Configuration**:
-    ```bash
-    moat init-config
-    ```
-2.  **Edit `config.yml`**:
-    *   Set `secret_key` to a strong, randomly generated value.  You can use `openssl rand -hex 32` to generate one.
-    *   Configure `database_url`, `moat_base_url`, and `cookie_domain` as needed.
-    *   Adjust `docker_monitor_enabled` and `moat_label_prefix` if using Docker.
-    *   Define static services in the `static_services` section if required.
+```bash
+moat init-config
+```
+
+Key configuration options:
+
+*   `listen_host`: The host Moat listens on (default: `0.0.0.0`).
+*   `listen_port`: The port Moat listens on (default: `8000`).
+*   `secret_key`: A secret key used to sign access tokens. Generate a strong key using `openssl rand -hex 32`.
+*   `database_url`: The URL of the SQLite database (default: `sqlite+aiosqlite:///./moat.db`).
+*   `moat_base_url`: The public URL of Moat itself (e.g., `https://moat.yourdomain.com`). This is crucial if Moat is behind a reverse proxy or tunnel.
+*   `cookie_domain`: The domain for the SSO cookie (e.g., `.yourdomain.com`).
 
 ## Running Moat
 
@@ -74,30 +78,28 @@ Moat uses a `config.yml` file for configuration. An example configuration is pro
 moat run
 ```
 
-This starts the Moat server.  Access the admin UI at `/moat/admin` to create a user and configure settings.
-
 ## Usage
 
-Once Moat is running, it will authenticate users and proxy requests to your backend services based on the configured hostnames.
+Once Moat is running, access the admin UI at `http://<moat_host>:<moat_port>/moat/admin/config` to configure your services.
 
-*   **Docker Service Discovery**: Moat monitors Docker containers for labels matching `moat_label_prefix`.  A container is enabled if it has the `moat.enable=true` label, along with `moat.hostname` and `moat.port`.
-*   **Static Services**:  Services defined in the `static_services` section of `config.yml` are always available.
+You'll need to create a user first using the `moat create-user` CLI command.
+
+Moat will then reverse proxy requests to your applications based on the hostname.
 
 ## CLI Commands
 
-Moat provides a command-line interface (CLI) for managing the application.
-
-*   `moat init-config`: Creates a default `config.yml` if one does not exist.
-*   `moat create-user`: Creates a new user in the database.
 *   `moat run`: Starts the Moat server.
-*	`moat add-static-service`: Adds a static service based on a running container.
+*   `moat init-config`: Creates a default `config.yml` file.
+*   `moat create-user`: Creates a new user in the database.
+*   `moat add-static-service`: Adds a static service to the configuration.
+*   `moat docker:bind`: Adds a static service bound to a Docker container's hostname and port.
 
 ## Troubleshooting
 
-* **"Secret key not configured" / "Moat configuration file not found"**: Ensure `config.yml` exists in the working directory and `secret_key` is set. Run `moat init-config`.
-* **Redirect loops or incorrect login URL**: Double-check `moat_base_url` in `config.yml`. It must be the public URL of Moat itself.
-* **Cookies not working across subdomains**: Verify `cookie_domain` is set correctly (e.g., `.yourdomain.com`).
-* **Docker services not appearing**:
+*   **"Secret key not configured" / "Moat configuration file not found"**: Ensure `config.yml` exists in the working directory and `secret_key` is set. Run `moat init-config`.
+*   **Redirect loops or incorrect login URL**: Double-check `moat_base_url` in `config.yml`. It must be the public URL of Moat itself.
+*   **Cookies not working across subdomains**: Verify `cookie_domain` is set correctly (e.g., `.yourdomain.com`).
+*   **Docker services not appearing**:
    * Ensure `docker_monitor_enabled: true`.
    * Check Moat's logs for Docker connection errors.
    * Verify container labels match `moat_label_prefix` and include `enable`, `hostname`, and `port`.
