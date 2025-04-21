@@ -13,46 +13,8 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     print(f"--- Cookie Auth Debug ---")
     print(f"Attempting to get user from cookie for request to: {request.url}")
     print(f"All Request Cookies: {request.cookies}")
-    
-    token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
-    if not token:
-        print(f"No token found in cookie.")
-        return None
-    
-    payload = decode_access_token(token)
-    if not payload:
-        print(f"Invalid token found in cookie.")
-        return None
-    
-    username = payload.get("sub")
-    if not username:
-        print(f"No username found in token payload.")
-        return None
-
-    return User(username=username)
-
-async def get_current_user_or_redirect(request: Request) -> User:
-    """
-    Attempts to get the current user from the access token cookie.
-    If the user is not authenticated, it redirects them to the login page.
-    """
-    cfg = get_settings()
-    user = await get_current_user_from_cookie(request)
-    if not user:
-        print(f"User not authenticated, redirecting to login.")
-        
-        # Construct the redirect URL, including the current path as the "next" parameter
-        login_url = "/moat/auth/login"
-        
-        # URL-encode the current path to avoid issues with special characters
-        safe_redirect_url = quote_plus(str(request.url))
-        redirect_url_with_next = f"{login_url}?next={safe_redirect_url}"
-        
-        #Manually construct the headers to set the cookie
-        headers = {"Location": redirect_url_with_next}
-        
-        #Construct delete cookie header to force browser to delete the cookie immediately.
-        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+... (FILE CONTENT TRUNCATED) ...
+e_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion
