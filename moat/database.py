@@ -24,8 +24,11 @@ async def init_db():
     await conn.close()
 
 async def get_user(username: str) -> Optional[UserInDB]:
-... (FILE CONTENT TRUNCATED) ...
- await conn.close()
+    conn = await get_db_connection()
+    cursor = await conn.execute("SELECT username, hashed_password FROM users WHERE username = ?", (username,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    await conn.close()
     if row:
         return UserInDB(username=row[0], hashed_password=row[1])
     return None

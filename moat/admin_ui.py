@@ -20,19 +20,15 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(), sort_keys=False)
-    health_status = await get_health_status() # Fetch health status for display
-
+    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
         "success": success,
         "error_message": error_message,
-        "health_status": health_status  # Pass health status to the template
+        "health_status": await get_health_status()
     })
-
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
@@ -40,19 +36,15 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Handles updating the configuration."""
     try:
-        # Load and validate the configuration from the form
+        # Load and Validate
         cfg_dict = yaml.safe_load(config_content)
         validated_settings = MoatSettings(**cfg_dict)
 
-        # Attempt to save the new settings
-        if await save_settings(validated_settings):
-            # Apply changes to runtime configuration
-            cfg = get_settings()
-            asyncio.create_task(apply_settings_changes_to_runtime(old_settings=None, new_settings=cfg)) # type: ignore
-            
-            redirect_url = request.url_for("view_config_form").include_query_params(success=True)
+        # Save if valid
+        if save_settings(validated_settings):
+            # Redirect to GET route to prevent form resubmission and show success message.
+            redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
