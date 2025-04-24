@@ -24,57 +24,72 @@ async def is_docker_monitor_running() -> bool:
 async def process_container_labels(container, action: str):
     cfg = get_settings()
     labels = container.labels
-    prefix = cfg.moat_label_prefix
-    enable_label = f"{prefix}.enable"
-    hostname_label = f"{prefix}.hostname"
-    port_label = f"{prefix}.port"
-
-    if enable_label not in labels or hostname_label not in labels or port_label not in labels:
-        print(f"Docker Monitor: Skipping container {container.name} ({container.short_id}) due to missing required labels.")
-        return
-
-    if labels[enable_label].lower() != "true":
-        print(f"Docker Monitor: Skipping container {container.name} ({container.short_id}) as it is disabled.")
-        return
-
-    hostname = labels[hostname_label]
-    try:
-        port = int(labels[port_label])
-    except ValueError:
-        print(f"Docker Monitor: Invalid port value for container {container.name} ({container.short_id}). Skipping.")
-        return
     
-    target_url = f"http://{container.name}:{port}"  # Construct target URL from container name
-    
-    if action == "start":
-        print(f"Docker Monitor: Registering service {hostname} -> {target_url} from container {container.name} ({container.short_id})")
-        await global_registry.register_service(hostname, target_url)
-    elif action == "die":
-        print(f"Docker Monitor: Deregistering service {hostname} from container {container.name} ({container.short_id})")
-        await global_registry.deregister_service(hostname)
+    enable_label = f"{cfg.moat_label_prefix}.enable"
+    hostname_label = f"{cfg.moat_label_prefix}.hostname"
+    port_label = f"{cfg.moat_label_prefix}.port"
+
+    if enable_label in labels and labels[enable_label].lower() == "true":
+        hostname = labels.get(hostname_label)
+        port = labels.get(port_label)
+        
+        if not hostname or not port:
+            print(f"Docker Monitor: Container {container.name} has 'enable' label but missing 'hostname' or 'port', skipping.")
+            return
+        
+        try:
+            target_url = f"http://{container.name}:{port}"  # Internal Docker network URL
+            print(f"Docker Monitor: Registering {hostname} -> {target_url} for container {container.name} (action: {action})")
+            if action == "start":
+                await global_registry.register_service(hostname, target_url)
+            elif action == "die":
+                await global_registry.remove_service(hostname) # Ensure removal on container stop
+        except Exception as e:
+            print(f"Docker Monitor: Error processing labels for {container.name}: {e}")
+    else:
+        if action == "die":
+            hostname_label = f"{cfg.moat_label_prefix}.hostname"
+            hostname = labels.get(hostname_label)
+            if hostname:
+                 await global_registry.remove_service(hostname) # Ensure removal on container stop
+        else:
+             print(f"Docker Monitor: Container {container.name} does not have '{cfg.moat_label_prefix}.enable=true', skipping.")
+            
 
 async def watch_docker_events():
-    """Monitors Docker events for container start/stop events to update the service registry."""
     global _monitor_task_should_stop, _monitor_task_active
-    _monitor_task_active = True
+    
+    if _monitor_task_active:
+        print("Docker Monitor: Already running, stop first.")
+        return
+    
     print("Docker Monitor: Starting event watcher...")
+    _monitor_task_active = True
     
     try:
-        client = docker.from_env() # this can raise docker.errors.DockerException
-        async for event in client.events(filters={"type": "container", "event": ["start", "die"]}, decode=True): # type: ignore
+        client = docker.from_env()
+        async for event in client.events(decode=True):
             if _monitor_task_should_stop.is_set():
-                print("Docker Monitor: Stop signal detected, exiting event loop.")
+                print("Docker Monitor: Exiting event watcher loop.")
                 break
-            
-            action = event.get("Action")
-            if action in ("start", "die"):
-                container_id = event["id"]
+
+            if event['Type'] == 'container':
+                action = event['Action']
                 try:
-                    container = client.containers.get(container_id)
-                    await process_container_labels(container, action)
-                except NotFound:
-                    # Container might be gone before we process the event
-                    print(f"Docker Monitor: Container {event['id'][:12]} not found, skipping.")
+                    container = client.containers.get(event["id"])
+
+                    if action in ("start", "die"):
+                        await process_container_labels(container, action)
+                    elif action == "destroy":
+                        hostname_label = f"{get_settings().moat_label_prefix}.hostname"
+                        if 'Labels' in event and hostname_label in event['Labels']:
+                            hostname = event['Labels'][hostname_label]
+                            await global_registry.remove_service(hostname)
+                        else:
+                            print(f"Docker Monitor: Container {event['id'][:12]} not found for event {action}, skipping.")
+                    except NotFound:
+
+                        print(f"Docker Monitor: Container {event['id'][:12]} not found, skipping.")
                 except Exception as e:
                     print(f"Docker Monitor: Error processing event for {event['id'][:12]}: {e}")
             else:

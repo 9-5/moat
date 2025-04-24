@@ -20,7 +20,7 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), indent=2, sort_keys=False)
+    config_content = yaml.dump(load_config().model_dump(exclude_none=True), sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -30,6 +30,7 @@ async def view_config_form(
         "health_status": await get_health_status()
     })
 
+
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
@@ -37,13 +38,11 @@ async def update_config(
     config_content: str = Form(...)
 ):
     try:
-        # Load and Validate
-        cfg_dict = yaml.safe_load(config_content)
-        validated_settings = MoatSettings(**cfg_dict)
+        new_config_data = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**new_config_data)
 
-        # Save if valid
-        if save_settings(validated_settings):
-            # Redirect to GET route to prevent form resubmission and show success message.
+        if await save_settings(validated_settings):
+            # Construct redirect URL with success=True query parameter
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

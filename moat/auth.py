@@ -26,54 +26,59 @@ async def authenticate_user(username: str, password: str):
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
-    """Displays the login form."""
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    cfg = get_settings()
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "moat_base_url": cfg.moat_base_url})
 
 @router.post("/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...), next_url: str = Form(None)):
-    """Handles user login."""
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     user = await authenticate_user(username, password)
     if not user:
-        # Quote the plus sign to prevent it from being replaced with a space.
-        error_message = quote_plus("Invalid username or password")
-        login_url_with_error = request.url_for("login_form").include_query_params(error=error_message)
-
-        # Redirect back to the login form with an error message
+        login_url_with_error = request.url.include_query_params(error="Invalid username or password")
         return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
-    
-    # Create access token
-    access_token = create_access_token(data={"sub": user.username})
-    
-    # Construct redirect target
+
     cfg = get_settings()
-    redirect_target = cfg.moat_base_url
-    if next_url:
-        redirect_target = next_url
+    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"username": user.username}, expires_delta=access_token_expires
+    )
     
-    # Create Response (FastAPI) and set cookie
-    response = RedirectResponse(redirect_target, status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/moat/protected-test", status_code=status.HTTP_303_SEE_OTHER)
+
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+
+    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
+
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
-        httponly=True,
-        samesite="lax",
-        secure= cfg.moat_base_url.scheme == "https", # Only set secure flag if using HTTPS
-        domain=cfg.cookie_domain,
+        domain=cookie_domain_setting,
         path="/",
+        secure=is_secure_connection_for_cookie,
+        httponly=True,
+        samesite="Lax",
+        max_age=access_token_expires.total_seconds(),
     )
-
     return response
 
 @router.get("/logout")
-async def logout(request: Request, next_url: str = None):
-    """Handles user logout by deleting the access token cookie."""
+async def logout(request: Request):
     cfg = get_settings()
-    # Determine the logout redirect target:
-    # 1. If `next_url` is provided as a query parameter, use it.
-    # 2. Otherwise, redirect to the Moat base URL.
-    logout_redirect_target_url = next_url if next_url else str(cfg.moat_base_url)
+    
+    moat_base_url = cfg.moat_base_url
+    if moat_base_url is None:
+        print("GET /logout - moat_base_url is None, redirecting to /")
+        logout_redirect_target_url = "/"
+    else:
+        print(f"GET /logout - moat_base_url is '{moat_base_url}', constructing redirect URL.")
+        # Construct logout redirect URL.  Preferentially redirect to moat_base_url *without* /auth/login
+        parsed_base_url = urlparse(str(moat_base_url)) # Ensure it's a string for urlparse
+        logout_redirect_target_url = parsed_base_url.scheme + "://" + parsed_base_url.netloc
 
-    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+    print(f"GET /logOut - Redirecting to: {logout_redirect_target_url} after logout.")
 
     response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
     

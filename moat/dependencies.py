@@ -16,41 +16,38 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        print(f"No token found in cookie.  Returning None")
+        
+        print(f"No token found in cookie for {request.url}")
         return None
 
     payload = decode_access_token(token)
-    if not payload:
-        print("Invalid token found in cookie. Returning None.")
+    if payload is None:
+        print(f"Invalid or expired token found in cookie for {request.url}")
         return None
-
-    username = payload.get("sub")
-    if not username:
-        print("No username found in token payload. Returning None")
+    
+    username = payload.get("username")
+    if username is None:
+        print(f"Username missing from token payload for {request.url}")
         return None
 
     return User(username=username)
 
 async def get_current_user_or_redirect(request: Request) -> User:
-    """
-    Authenticates the user based on the access token cookie.
-    If the user is authenticated, returns the User object.
-    Otherwise, redirects to the login page with a 'next' parameter indicating the originally requested URL.
-    """
+    cfg = get_settings()
     user = await get_current_user_from_cookie(request)
     if user is None:
-        print("No valid user found in cookie. Redirecting to login.")
+        print(f"No valid user found for {request.url}, redirecting to login.")
+        
+        login_url = "/moat/auth/login"
+        
+        # Construct the "next" URL for redirection after login.
+        # Note: FastAPI's Request object already URL-encodes request.url
+        next_url = quote_plus(str(request.url))
+        full_login_url = f"{login_url}?next={next_url}" # Append "next" parameter
 
-        cfg = get_settings()
-        # URL-encode the original URL to ensure it's correctly passed as a query parameter.
-        # next_url = quote_plus(str(request.url)) # Encode the entire URL
+        headers = {"Location": full_login_url}
 
-        # next_url = str(request.url) # str() already URL encodes unsafe characters.  Don't double encode!
-
-        # Determine the appropriate login redirect target
-        login_redirect_target_url = cfg.moat_base_url.include_query_params(next=str(request.url))
-    
-        headers = {}
+        # Properly handle secure cookies when redirecting to login
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
