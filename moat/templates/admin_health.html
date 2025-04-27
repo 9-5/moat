@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Moat Admin - System Health</title>
+    <style>
+        body { font-family: sans-serif; }
+        .status-ok { color: green; }
+        .status-warning { color: orange; }
+        .status-error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Moat Admin - System Health</h1>
+
+    {% if current_user %}
+        <p>Logged in as: {{ current_user.username }} | <a href="/moat/auth/logout">Logout</a></p>
+    {% else %}
+        <p><a href="/moat/auth/login">Login</a></p>
+    {% endif %}
+
+    <p><a href="/moat/admin/config">Configuration</a></p>
+
+    <h2>System Status</h2>
+    <p><b>Overall Status:</b> <span class="status-ok">{{ health_status.status }}</span></p>
+
+    <h2>Docker Monitor</h2>
+    <p><b>Docker Monitor Configured:</b> {{ health_status.docker_monitor_configured }}</p>
+    <p><b>Docker Monitor Active:</b> {{ health_status.docker_monitor_active }}</p>
+    <p><b>Effective Docker Status:</b> {{ health_status.effective_docker_status }}</p>
+
+</body>
+</html>

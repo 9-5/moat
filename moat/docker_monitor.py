@@ -22,7 +22,9 @@ async def is_docker_monitor_running() -> bool:
 
 async def process_container_labels(container, action: 
 ... (FILE CONTENT TRUNCATED) ...
-                    print(f"Docker Monitor: Container {event['id'][:12]} not found for event {action}, skipping.")
+y_container_id(event["id"])
+                        else:
+                            print(f"Docker Monitor: Container {event['id'][:12]} not found for event {action}, skipping.")
                     except Exception as e:
                         print(f"Docker Monitor: Error processing event for {event['id'][:12]}: {e}")
     except docker.errors.DockerException as e:

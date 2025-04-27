@@ -1,53 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Moat Admin Configuration</title>
+    <title>Moat Admin - Configuration</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        h1 {
-            color: #333;
-        }
-        form {
-            margin-top: 20px;
-        }
-        textarea {
-            width: 80%;
-            height: 300px;
-            margin-bottom: 10px;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #3e8e41;
-        }
-        .error {
-            color: red;
-            margin-bottom: 10px;
-        }
-        .success {
-            color: green;
-            margin-bottom: 10px;
-        }
-        .health-status {
-            margin-top: 20px;
-            border: 1px solid #ccc;
-            padding: 10px;
-        }
-        .health-status h2 {
-            margin-top: 0;
-        }
+        body { font-family: sans-serif; }
+        textarea { width: 100%; height: 300px; margin-bottom: 10px; }
+        .success { color: green; }
+        .error { color: red; }
     </style>
 </head>
 <body>
-    <h1>Moat Admin Configuration</h1>
+    <h1>Moat Admin - Configuration</h1>
+    
+    {% if current_user %}
+        <p>Logged in as: {{ current_user.username }} | <a href="/moat/auth/logout">Logout</a></p>
+    {% else %}
+        <p><a href="/moat/auth/login">Login</a></p>
+    {% endif %}
+
+    <p><a href="/moat/admin/health">System Health</a></p>
 
     {% if success %}
         <p class="success">Configuration saved successfully!</p>
@@ -58,17 +29,9 @@
     {% endif %}
 
     <form method="post">
-        <textarea name="config_content">{{ config_content }}</textarea><br>
+        <textarea name="config_content">{{ config_content }}</textarea>
         <button type="submit">Save Configuration</button>
     </form>
-
-    <div class="health-status">
-        <h2>System Health</h2>
-        <p><strong>Status:</strong> {{ health_status.status }}</p>
-        <p><strong>Docker Monitor Configured:</strong> {{ health_status.docker_monitor_configured }}</p>
-        <p><strong>Docker Monitor Active:</strong> {{ health_status.docker_monitor_active }}</p>
-        <p><strong>Effective Docker Status:</strong> {{health_status.effective_docker_status }}</p>
-    </div>
 
 </body>
 </html>
