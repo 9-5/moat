@@ -6,7 +6,7 @@ from watchdog.observers import Observer # type: ignore
 from watchdog.events import FileSystemEventHandler # type: ignore
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse, quote_plus, urljoin 
+from urllib.parse import urlparse, quote_plus, urljoin
 
 from .auth import router as auth_router
 from .proxy import reverse_proxy
