@@ -23,29 +23,31 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     try:
         with open(CONFIG_FILE_PATH, 'r') as f:
             config_data = yaml.safe_load(f)
+            if config_data is None:
+                config_data = {}  # Treat empty file as empty dict
+            validated_settings = MoatSettings(**config_data)
+            _settings = validated_settings
+            _config_last_modified_time = current_mtime
+            return _settings
+    except FileNotFoundError:
+        raise
+    except yaml.YAMLError as e:
+        raise ValueError(f"Error parsing YAML in {CONFIG_FILE_PATH}: {e}")
     except Exception as e:
-        raise ValueError(f"Error reading configuration file: {e}")
-
-    try:
-        validated_settings = MoatSettings(**config_data)  #Pydantic model handles validation
-    except Exception as e:
-        raise ValueError(f"Error validating configuration: {e}")
-
-    _settings = validated_settings
-    _config_last_modified_time = current_mtime
-    return _settings
+        raise ValueError(f"Error loading config from {CONFIG_FILE_PATH}: {e}")
 
 async def save_settings(validated_settings: MoatSettings) -> bool:
-    """Saves the validated settings to the config file."""
     global _settings, _config_last_modified_time
     try:
-        # Dump the Pydantic model back to a dictionary for YAML serialization
+        # Convert Pydantic model back to a dictionary for YAML serialization
         cfg_dict = validated_settings.model_dump()
 
+        # Write the configuration to the file
+        print(f"Config: Saving configuration to {CONFIG_FILE_PATH}")
         with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(cfg_dict, f, sort_keys=False, default_flow_style=False) # Preserve order
+            yaml.dump(cfg_dict, f, sort_keys=False)
 
-        print(f"Config: Saved new configuration to {CONFIG_FILE_PATH}")
+        print(f"Config: Successfully saved to {CONFIG_FILE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
