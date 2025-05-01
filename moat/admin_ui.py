@@ -17,50 +17,40 @@ templates = Jinja2Templates(directory="moat/templates")
 async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    success: bool = False,
-    error_message: str = ""
+    success: bool = False, # Added query parameter to indicate save success
+    error_message: str = "" # Added query parameter for error messages
 ):
-    """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False) # Removed get_current_config_as_dict
+    """Displays the configuration form with the current config."""
+    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), sort_keys=False) # Exclude unset to not show defaults
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
         "error_message": error_message,
         "success": success,
-        "health_status": await get_health_status()
+        "health_status": await get_health_status() # Pass health status to template
     })
 
-def construct_redirect_url_with_query_params(url: str, params: dict):
-    from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
-    url_parts = list(urlparse(url))
-    query = dict(parse_qs(url_parts[4]))
-    query.update(params)
-    url_parts[4] = urlencode(query)
-    return urlunparse(url_parts)
-
 @router.post("/config", response_class=HTMLResponse)
-async def handle_config_form(
+async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Handles the submission of the configuration form."""
+    """Updates the configuration file with the submitted content."""
     try:
-        # Load and validate the configuration from the form
-        new_config_dict = yaml.safe_load(config_content)
-        validated_settings = MoatSettings(**new_config_dict)
+        # 1. Load and Validate
+        cfg_dict = yaml.safe_load(config_content)
+        if cfg_dict is None:
+            cfg_dict = {}
+        validated_settings = MoatSettings(**cfg_dict) # Pydantic validation
 
-        # Save the new configuration
-        if await save_settings(validated_settings):
-            # Apply settings changes to the runtime environment
-            cfg = get_settings() # Get current settings
-            await apply_settings_changes_to_runtime(cfg, validated_settings)
-
-            # Redirect back to the config page with a success message
-            redirect_url = request.url_for("view_config_form") # Use the route name
-            redirect_url = construct_redirect_url_with_query_params(success=True, url=str(redirect_url))
-            return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+        # 2. Save
+        success = save_settings(validated_settings)
+        if success:
+            # Construct the redirect URL with success query parameter
+            redirect_url = request.url.include_query_params(success=True)
+            return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
 

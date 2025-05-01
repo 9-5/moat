@@ -25,29 +25,28 @@ def load_config(force_reload: bool = False) -> MoatSettings:
             config_data = yaml.safe_load(f)
             if config_data is None:
                 config_data = {}  # Treat empty file as empty dict
-            validated_settings = MoatSettings(**config_data)
+            validated_settings = MoatSettings(**config_data) # Validate on load
             _settings = validated_settings
             _config_last_modified_time = current_mtime
             return _settings
     except FileNotFoundError:
         raise
     except yaml.YAMLError as e:
-        raise ValueError(f"Error parsing YAML in {CONFIG_FILE_PATH}: {e}")
+        raise ValueError(f"Invalid YAML format in {CONFIG_FILE_PATH}: {e}")
     except Exception as e:
-        raise ValueError(f"Error loading config from {CONFIG_FILE_PATH}: {e}")
+        raise ValueError(f"Error loading configuration from {CONFIG_FILE_PATH}: {e}")
 
-async def save_settings(validated_settings: MoatSettings) -> bool:
+def get_settings() -> MoatSettings:
+    if _settings is None:
+        raise RuntimeError("Settings have not been loaded yet. Ensure config.yml exists and is valid.")
+    return _settings
+
+def save_settings(validated_settings: MoatSettings) -> bool:
     global _settings, _config_last_modified_time
     try:
-        # Convert Pydantic model back to a dictionary for YAML serialization
-        cfg_dict = validated_settings.model_dump()
-
-        # Write the configuration to the file
-        print(f"Config: Saving configuration to {CONFIG_FILE_PATH}")
+        cfg_dict = validated_settings.model_dump(exclude_unset=True) # Convert back to dict, exclude unset
         with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(cfg_dict, f, sort_keys=False)
-
-        print(f"Config: Successfully saved to {CONFIG_FILE_PATH}")
+            print(f"Config: Saving configuration to {CONFIG_FILE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
