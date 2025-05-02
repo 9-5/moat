@@ -9,6 +9,7 @@ from moat.dependencies import get_current_user_or_redirect
 from moat.config import get_settings, save_settings, CONFIG_FILE_PATH, load_config
 from moat.runtime_config import apply_settings_changes_to_runtime
 from moat.server import get_health_status
+from moat.service_registry import registry as global_registry
 
 router = APIRouter(prefix="/moat/admin", tags=["admin_ui"])
 templates = Jinja2Templates(directory="moat/templates")
@@ -17,18 +18,18 @@ templates = Jinja2Templates(directory="moat/templates")
 async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    success: bool = False, # Added query parameter to indicate save success
-    error_message: str = "" # Added query parameter for error messages
+    success: bool = False,
+    error_message: str = ""
 ):
-    """Displays the configuration form with the current config."""
-    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), sort_keys=False) # Exclude unset to not show defaults
+    """Displays the configuration form."""
+    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
-        "error_message": error_message,
         "success": success,
-        "health_status": await get_health_status() # Pass health status to template
+        "error_message": error_message,
+        "health_status": await get_health_status()
     })
 
 @router.post("/config", response_class=HTMLResponse)
@@ -37,18 +38,28 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration file with the submitted content."""
+    """Handles the submission of the configuration form."""
     try:
-        # 1. Load and Validate
-        cfg_dict = yaml.safe_load(config_content)
-        if cfg_dict is None:
-            cfg_dict = {}
-        validated_settings = MoatSettings(**cfg_dict) # Pydantic validation
-
-        # 2. Save
-        success = save_settings(validated_settings)
+        # Load and validate the config
+        new_config = yaml.safe_load(config_content)
+        
+        try:
+            validated_settings = MoatSettings(**new_config)
+        except Exception as e:
+            print(f"AdminConfig: Validation error: {e}")
+            return templates.TemplateResponse("admin_config.html", {
+                "request": request,
+                "current_user": current_user,
+                "config_content": config_content,
+                "error_message": f"Configuration validation error: {e}",
+                "success": False,
+                "health_status": await get_health_status()
+            })
+        
+        # Attempt to save the settings
+        success = await save_settings(validated_settings)
         if success:
-            # Construct the redirect URL with success query parameter
+            # If save was successful, reload the config and redirect
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
@@ -81,4 +92,18 @@ async def view_health(
         "request": request,
         "current_user": current_user,
         "health_status": health_status
+    })
+
+@router.get("/services", response_class=HTMLResponse)
+async def view_services(
+    request: Request,
+    current_user: User = Depends(get_current_user_or_redirect)
+):
+    """Displays the registered services."""
+    services = await global_registry.get_all_services()
+    return templates.TemplateResponse("admin_services.html", {
+        "request": request,
+        "current_user": current_user,
+        "services": services,
+        "health_status": await get_health_status()
     })

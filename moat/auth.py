@@ -16,36 +16,40 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str) -> Optional[User]:
+async def authenticate_user(username: str, password: str):
     user = await get_user(username)
     if not user:
-        return None
+        return False
     if not verify_password(password, user.hashed_password):
-        return None
-    return User(username=user.username)
+        return False
+    return user
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
-    """Returns the login form."""
+    """Displays the login form."""
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Authenticates the user and sets the access token cookie."""
+    """Handles user login."""
     user = await authenticate_user(username, password)
     if not user:
-        # Redirect back to login with an error message
-        login_url_with_error = request.url_for("login_form").include_query_params(error="Invalid username or password")
-        return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
-
-    cfg = get_settings()
-    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
+        # Redirect back to login form with an error message
+        error_message = "Invalid username or password"
+        encoded_error = quote_plus(error_message)
+        login_url_with_error = f"/moat/auth/login?error={encoded_error}"
+        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_303_SEE_OTHER) # Use 303 for redirect after POST
+    
+    # Create access token
+    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    
-    response = RedirectResponse(url="/moat/protected-test", status_code=status.HTTP_303_SEE_OTHER) # Redirect to protected test route
 
+    # Set cookie
+    cfg = get_settings()
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    
     cookie_domain_setting = cfg.cookie_domain
     is_secure_connection_for_cookie_set = (
         request.url.scheme == "https" or
@@ -77,4 +81,23 @@ async def logout(request: Request):
     else:
         # if not defined redirect to "/"
         logout_redirect_target_url = "/" # Redirect to root if no moat_base_url specified
-    print(f"GET /log
+    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+
+    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie_delete = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
+
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        path="/",
+        domain=cookie_domain_setting,
+        secure=is_secure_connection_for_cookie_delete,
+        httponly=True,
+        samesite="Lax"
+    )
+    return response
