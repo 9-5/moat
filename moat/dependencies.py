@@ -16,35 +16,20 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        print(f"No access token cookie found for {request.url}")
-        return None
-
-    payload = decode_access_token(token)
-    if payload is None:
-        print(f"Invalid or expired access token found in cookie for {request.url}")
-        return None
-    
-    username = payload.get("sub")
-    if not username:
-        print(f"No username found in access token for {request.url}")
-        return None
-
-    return User(username=username)
-
-async def get_current_user_or_redirect(request: Request) -> User:
-    """
-    Dependency that retrieves the current user from the access token cookie.
-    If the user is not authenticated, it redirects to the login page.
-    """
-    cfg = get_settings()
-    user = await get_current_user_from_cookie(request)
-
-    if user is None:
-        print(f"No valid user found for {request.url}, redirecting to login.")
-        # Determine redirect target based on moat_base_url
-        login_redirect_target = cfg.moat_base_url if cfg.moat_base_url else "/"
         
-        headers = {"Location": f"/moat/auth/login?next={quote_plus(str(request.url))}"}
+... (FILE CONTENT TRUNCATED) ...
+e_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+            delete_cookie_header_val += "; Secure"
+        if cfg.cookie_domain: # Add domain if configured for deletion
+            delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
+        headers["Set-Cookie"] = delete_cookie_header_val
+
+        raise HTTPException(
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            detail="Not authenticated, redirecting to login.",
+            headers=headers
+        )
         
-        #Construct delete cookie header - force browser to forget the invalid cookie
-        delet
+    print(f"User '{user.username}' authenticated successfully for {request.url}, proceeding with request.")
+    return user

@@ -19,17 +19,16 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = ""
+    error_message: str = None
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
+    config_content = yaml.dump(await asyncio.to_thread(get_current_config_as_dict), sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
         "success": success,
-        "error_message": error_message,
-        "health_status": await get_health_status()
+        "error_message": error_message
     })
 
 @router.post("/config", response_class=HTMLResponse)
@@ -40,26 +39,12 @@ async def update_config(
 ):
     """Handles the submission of the configuration form."""
     try:
-        # Load and validate the config
-        new_config = yaml.safe_load(config_content)
-        
-        try:
-            validated_settings = MoatSettings(**new_config)
-        except Exception as e:
-            print(f"AdminConfig: Validation error: {e}")
-            return templates.TemplateResponse("admin_config.html", {
-                "request": request,
-                "current_user": current_user,
-                "config_content": config_content,
-                "error_message": f"Configuration validation error: {e}",
-                "success": False,
-                "health_status": await get_health_status()
-            })
-        
-        # Attempt to save the settings
-        success = await save_settings(validated_settings)
-        if success:
-            # If save was successful, reload the config and redirect
+        # Validate the YAML content first
+        yaml.safe_load(config_content)
+
+        # Attempt to save the configuration
+        if await asyncio.to_thread(save_settings, config_content):
+            # If saving is successful, redirect back to the config page with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
@@ -76,9 +61,8 @@ async def update_config(
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
-        "error_message": error_message,
         "success": False,
-        "health_status": await get_health_status()
+        "error_message": error_message
     })
 
 @router.get("/health", response_class=HTMLResponse)

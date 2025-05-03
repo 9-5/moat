@@ -19,36 +19,9 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-    try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
-            if config_data is None:
-                config_data = {} # Handle empty config file
-            _settings = MoatSettings(**config_data)
-            _config_last_modified_time = current_mtime
-            return _settings
-    except (yaml.YAMLError, ValueError) as e:
-        raise ValueError(f"Error parsing configuration file: {e}")
-
-def get_settings() -> MoatSettings:
-    if _settings is None:
-        raise RuntimeError("Settings not initialized. Ensure load_config() has been called.")
-    return _settings
-
-async def save_settings(new_settings: MoatSettings) -> bool:
-    global _settings, _config_last_modified_time
-
-    # Validate new settings
-    try:
-        validated_settings = copy.deepcopy(new_settings)  # Create a copy for validation
-        
-        # Write the validated settings to the config file
-        with open(CONFIG_FILE_PATH, 'w') as f:
-            cfg_dict = validated_settings.model_dump()
-            yaml.dump(cfg_dict, f, sort_keys=False)
-
-        print(f"Config: Saved new configuration to {CONFIG_FILE_PATH}")
+    print(f"Config: Loading configuration from
+... (FILE CONTENT TRUNCATED) ...
+LE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
