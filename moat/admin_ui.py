@@ -19,16 +19,18 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = None
+    error_message: str = ""
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(await asyncio.to_thread(get_current_config_as_dict), sort_keys=False)
+    config_content = yaml.dump(load_config().model_dump(), sort_keys=False)
+    health_status = await get_health_status()
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
         "success": success,
-        "error_message": error_message
+        "error_message": error_message,
+        "health_status": health_status
     })
 
 @router.post("/config", response_class=HTMLResponse)
@@ -39,12 +41,18 @@ async def update_config(
 ):
     """Handles the submission of the configuration form."""
     try:
-        # Validate the YAML content first
-        yaml.safe_load(config_content)
+        # Load the YAML content
+        cfg_dict = yaml.safe_load(config_content)
 
-        # Attempt to save the configuration
-        if await asyncio.to_thread(save_settings, config_content):
-            # If saving is successful, redirect back to the config page with a success message
+        # Validate against the MoatSettings model
+        validated_settings = MoatSettings(**cfg_dict)
+
+        # Save the validated settings
+        if await save_settings(validated_settings):
+            # Optionally, apply the settings changes to the runtime configuration
+            await apply_settings_changes_to_runtime(get_settings(), validated_settings)
+
+            # Redirect back to the config page with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
@@ -57,12 +65,14 @@ async def update_config(
     except Exception as e:
         error_message = f"An unexpected error occurred: {e}"
 
+    health_status = await get_health_status()
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
         "success": False,
-        "error_message": error_message
+        "error_message": error_message,
+        "health_status": health_status
     })
 
 @router.get("/health", response_class=HTMLResponse)

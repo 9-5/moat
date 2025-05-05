@@ -24,81 +24,55 @@ async def authenticate_user(username: str, password: str) -> Optional[User]:
         return None
     return User(username=user.username)
 
-
 @router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, next: Optional[str] = None):
+async def login_form(request: Request, error: str = None):
     """Displays the login form."""
-    return templates.TemplateResponse("login.html", {"request": request, "next": next})
-
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @router.post("/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...), next: Optional[str] = None):
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Handles user login."""
-    cfg = get_settings()
     user = await authenticate_user(username, password)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-
+        # Quote the plus sign to avoid it being converted to a space
+        login_url_with_error = request.url_for("login_form").include_query_params(error=quote_plus("Invalid username or password"))
+        print(f"POST /login - Authentication failure for user '{username}'. Redirecting back to login with error.")
+        return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
+    
+    cfg = get_settings()
     access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-
-    response = RedirectResponse(next or "/", status_code=status.HTTP_303_SEE_OTHER)  # Use 303 for POST redirect
     
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie_set = (
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    
+    is_secure_connection = (
         request.url.scheme == "https" or
         request.headers.get("x-forwarded-proto") == "https"
     )
-
-    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_set}")
+    print(f"POST /login - Setting cookie. Domain: '{cfg.cookie_domain}', Secure: {is_secure_connection}")
 
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
-        path="/",
-        domain=cookie_domain_setting,
-        secure=is_secure_connection_for_cookie_set,
         httponly=True,
-        samesite="Lax",
-        max_age=access_token_expires.total_seconds()
+        secure=is_secure_connection,
+        samesite="lax",
+        domain=cfg.cookie_domain, # Use configured cookie domain
+        path="/"
     )
     return response
-
 
 @router.get("/logout")
 async def logout(request: Request):
     """Handles user logout."""
     cfg = get_settings()
     
-    # Determine the logout redirect target
-    moat_base_url_str = str(cfg.moat_base_url) if cfg.moat_base_url else "/"
-    logout_redirect_target_url = urljoin(moat_base_url_str, "/")
+    # Determine the target URL after logout.
+    logout_redirect_target_url = "/"  # Default to the homepage.
+    if cfg.moat_base_url:
+        # If moat_base_url is set, construct an absolute URL.
+        logout_redirect_target_url = str(cfg.moat_base_url)
     
     print(f"GET /log
-... (FILE CONTENT TRUNCATED) ...
-out - Redirecting to: {logout_redirect_target_url} after logout.")
-
-    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
-    
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie_delete = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
-    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
-
-    response.delete_cookie(
-        ACCESS_TOKEN_COOKIE_NAME,
-        path="/",
-        domain=cookie_domain_setting,
-        secure=is_secure_connection_for_cookie_delete,
-        httponly=True,
-        samesite="Lax"
-    )
-    return response
