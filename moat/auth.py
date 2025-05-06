@@ -16,41 +16,48 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str) -> Optional[User]:
+async def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
+    """Authenticates a user against the database."""
     user = await get_user(username)
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
-    return User(username=user.username)
+    return user
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
     """Displays the login form."""
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    cfg = get_settings()
+    return templates.TemplateResponse("login.html", {"request": request, "error": error, "moat_base_url": cfg.moat_base_url})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Handles user login."""
     user = await authenticate_user(username, password)
     if not user:
-        # Quote the plus sign to avoid it being converted to a space
-        login_url_with_error = request.url_for("login_form").include_query_params(error=quote_plus("Invalid username or password"))
-        print(f"POST /login - Authentication failure for user '{username}'. Redirecting back to login with error.")
-        return RedirectResponse(url=str(login_url_with_error), status_code=status.HTTP_303_SEE_OTHER)
-    
-    cfg = get_settings()
-    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
+        # Failed authentication: Redirect back to login form with an error message.
+        error_message = "Invalid username or password"
+        encoded_error_message = quote_plus(error_message)  # URL-encode the error message
+
+        # Build the redirect URL, including the encoded error message.
+        login_url = request.url_for("login_form")  # Correctly generate the URL for the login_form endpoint
+        redirect_url = f"{login_url}?error={encoded_error_message}"  # Append the encoded error to the URL
+
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
+
+    # Successful authentication: Create access token and set cookie.
+    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-    
+    cfg = get_settings()
     is_secure_connection = (
         request.url.scheme == "https" or
         request.headers.get("x-forwarded-proto") == "https"
     )
+
+    response = RedirectResponse("/", status_code=status.HTTP_302_FOUND) # Redirect to root.
     print(f"POST /login - Setting cookie. Domain: '{cfg.cookie_domain}', Secure: {is_secure_connection}")
 
     response.set_cookie(
@@ -75,4 +82,23 @@ async def logout(request: Request):
         # If moat_base_url is set, construct an absolute URL.
         logout_redirect_target_url = str(cfg.moat_base_url)
     
-    print(f"GET /log
+    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+
+    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie_delete = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
+
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        path="/",
+        domain=cookie_domain_setting,
+        secure=is_secure_connection_for_cookie_delete,
+        httponly=True,
+        samesite="Lax"
+    )
+    return response

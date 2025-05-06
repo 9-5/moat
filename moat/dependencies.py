@@ -16,46 +16,46 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        print(f"No access token cookie found for {request.url}")
+        
+        print("No access token found in cookie, user is not authenticated.")
         return None
-
     try:
         payload = decode_access_token(token)
-        if payload is None:
-            print(f"Invalid access token found in cookie for {request.url}")
+        if payload is None or "sub" not in payload:
+            print("Invalid or malformed access token.")
             return None
-        username = payload.get("sub")
-        if username is None:
-            print(f"No username found in access token for {request.url}")
-            return None
+
+        username = payload["sub"]
         return User(username=username)
     except Exception as e:
-        print(f"Error decoding access token: {e}")
+        print(f"Error decoding token: {e}")
         return None
 
 async def get_current_user_or_redirect(request: Request) -> User:
+    """
+    Retrieves the current user from the access token cookie. If no valid token exists,
+    redirects the user to the login page.
+    """
     user = await get_current_user_from_cookie(request)
-    cfg = get_settings()
-    
     if user is None:
-        print(f"No user authenticated, redirecting to login from {request.url}")
-        
-        # Determine the login redirect target URL.
-        login_redirect_target_url = request.url
+        print(f"Unauthenticated user attempting to access {request.url}, redirecting to login.")
+        cfg = get_settings()
+        #Construct the full URL to redirect to, including the original path.
+        login_url = "/moat/auth/login"
         if cfg.moat_base_url:
-            # If moat_base_url is set, construct an absolute URL.
-            login_redirect_target_url = urljoin(str(cfg.moat_base_url), request.url.path)
+             login_url = str(cfg.moat_base_url.join_url("/moat/auth/login"))
+             #login_url = urljoin(str(cfg.moat_base_url), "/moat/auth/login")
+        
+        # URL-encode the 'next' parameter
+        next_url = str(request.url)
+        encoded_next_url = quote_plus(next_url)
 
-        # Quote the URL to handle special characters correctly.
-        quoted_login_redirect_target_url = quote_plus(str(login_redirect_target_url))
+        # Construct the redirect URL with the 'next' parameter
+        redirect_url = f"{login_url}?next={encoded_next_url}"
         
         headers = {}
-        
-        # Build correct redirect URL including the "next" parameter
-        login_url = request.url_for("login_form")
-        redirect_url_with_next = login_url.include_query_params(next=quoted_login_redirect_target_url)
-        
-        # Construct header value for cookie deletion
+
+        # Clear the cookie during redirection to login
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
