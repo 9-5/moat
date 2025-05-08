@@ -16,58 +16,61 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
-    """Authenticates a user against the database."""
+async def authenticate_user(username: str, password: str) -> Optional[User]:
     user = await get_user(username)
     if not user:
         return None
     if not verify_password(password, user.hashed_password):
         return None
-    return user
+    return User(username=user.username)
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
     """Displays the login form."""
-    cfg = get_settings()
-    return templates.TemplateResponse("login.html", {"request": request, "error": error, "moat_base_url": cfg.moat_base_url})
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Handles user login."""
     user = await authenticate_user(username, password)
     if not user:
-        # Failed authentication: Redirect back to login form with an error message.
-        error_message = "Invalid username or password"
-        encoded_error_message = quote_plus(error_message)  # URL-encode the error message
+        form_url = request.url_for("login_form")
+        error_encoded = quote_plus("Invalid username or password")
+        redirect_url = f"{form_url}?error={error_encoded}"
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
 
-        # Build the redirect URL, including the encoded error message.
-        login_url = request.url_for("login_form")  # Correctly generate the URL for the login_form endpoint
-        redirect_url = f"{login_url}?error={encoded_error_message}"  # Append the encoded error to the URL
-
-        return RedirectResponse(url=redirect_url, status_code=status.HTTP_302_FOUND)
-
-    # Successful authentication: Create access token and set cookie.
-    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
+    cfg = get_settings()
+    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    cfg = get_settings()
-    is_secure_connection = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
+    
+    # Determine redirect target.
+    parsed_url = urlparse(str(request.base_url))
+    redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
+    
+    print(f"POST /login - Determining redirect target after login.  moat_base_url: '{cfg.moat_base_url}', Request base_url: '{request.base_url}', Redirecting to: {redirect_target_url}")
 
-    response = RedirectResponse("/", status_code=status.HTTP_302_FOUND) # Redirect to root.
-    print(f"POST /login - Setting cookie. Domain: '{cfg.cookie_domain}', Secure: {is_secure_connection}")
+    response = RedirectResponse(redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+
+    # Cookie settings are very important for cross-domain SSO to work correctly
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie = (
+        request.url.scheme == "https" or # if *this* request is HTTPS...
+        request.headers.get("x-forwarded-proto") == "https" # ...OR if X-Forwarded-Proto header says it was HTTPS upstream
+    )
+    
+    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
 
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
+        domain=cookie_domain_setting,
+        path="/",
+        secure=is_secure_connection_for_cookie,
         httponly=True,
-        secure=is_secure_connection,
-        samesite="lax",
-        domain=cfg.cookie_domain, # Use configured cookie domain
-        path="/"
+        samesite="Lax",
+        max_age=access_token_expires.total_seconds(),
     )
     return response
 
@@ -75,30 +78,8 @@ async def login(request: Request, username: str = Form(...), password: str = For
 async def logout(request: Request):
     """Handles user logout."""
     cfg = get_settings()
-    
-    # Determine the target URL after logout.
-    logout_redirect_target_url = "/"  # Default to the homepage.
-    if cfg.moat_base_url:
-        # If moat_base_url is set, construct an absolute URL.
-        logout_redirect_target_url = str(cfg.moat_base_url)
-    
-    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
 
-    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
-    
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie_delete = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
-    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
-
-    response.delete_cookie(
-        ACCESS_TOKEN_COOKIE_NAME,
-        path="/",
-        domain=cookie_domain_setting,
-        secure=is_secure_connection_for_cookie_delete,
-        httponly=True,
-        samesite="Lax"
-    )
-    return response
+    # Determine redirect target.
+    parsed_url = urlparse(str(request.base_url))
+    logout_redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
+    print(f"GET /log
