@@ -16,50 +16,47 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str) -> Optional[User]:
+async def authenticate_user(username: str, password: str):
+    """Authenticates a user against the database."""
     user = await get_user(username)
     if not user:
-        return None
+        return False
     if not verify_password(password, user.hashed_password):
-        return None
-    return User(username=user.username)
+        return False
+    return user
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: str = None):
-    """Displays the login form."""
+    """Returns the login form."""
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     """Handles user login."""
+    cfg = get_settings()
     user = await authenticate_user(username, password)
     if not user:
-        form_url = request.url_for("login_form")
-        error_encoded = quote_plus("Invalid username or password")
-        redirect_url = f"{form_url}?error={error_encoded}"
-        return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
-
-    cfg = get_settings()
+        # Redirect back to login form with an error message
+        error_message = "Invalid username or password"
+        encoded_error_message = quote_plus(error_message) # URL encode the error message
+        login_url_with_error = f"/moat/auth/login?error={encoded_error_message}"
+        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_303_SEE_OTHER)
+    
+    # Create access token
     access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    
-    # Determine redirect target.
-    parsed_url = urlparse(str(request.base_url))
-    redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
-    
-    print(f"POST /login - Determining redirect target after login.  moat_base_url: '{cfg.moat_base_url}', Request base_url: '{request.base_url}', Redirecting to: {redirect_target_url}")
 
-    response = RedirectResponse(redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
-
-    # Cookie settings are very important for cross-domain SSO to work correctly
-    cookie_domain_setting = cfg.cookie_domain
+    # Determine if the connection is secure (HTTPS)
     is_secure_connection_for_cookie = (
-        request.url.scheme == "https" or # if *this* request is HTTPS...
-        request.headers.get("x-forwarded-proto") == "https" # ...OR if X-Forwarded-Proto header says it was HTTPS upstream
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https" # Check if behind a proxy
     )
-    
+
+    # Set the cookie
+    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
+    cookie_domain_setting = cfg.cookie_domain
     print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
 
     response.set_cookie(
@@ -82,4 +79,23 @@ async def logout(request: Request):
     # Determine redirect target.
     parsed_url = urlparse(str(request.base_url))
     logout_redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
-    print(f"GET /log
+    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+
+    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie_delete = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
+
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        path="/",
+        domain=cookie_domain_setting,
+        secure=is_secure_connection_for_cookie_delete,
+        httponly=True,
+        samesite="Lax"
+    )
+    return response
