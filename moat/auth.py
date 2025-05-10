@@ -16,70 +16,92 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str):
-    """Authenticates a user against the database."""
+async def authenticate_user(username: str, password: str) -> Optional[User]:
     user = await get_user(username)
     if not user:
-        return False
+        return None
     if not verify_password(password, user.hashed_password):
-        return False
-    return user
+        return None
+    return User(username=user.username)
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, error: str = None):
-    """Returns the login form."""
+async def login_form(request: Request, error: Optional[str] = None):
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Handles user login."""
-    cfg = get_settings()
     user = await authenticate_user(username, password)
     if not user:
-        # Redirect back to login form with an error message
-        error_message = "Invalid username or password"
-        encoded_error_message = quote_plus(error_message) # URL encode the error message
-        login_url_with_error = f"/moat/auth/login?error={encoded_error_message}"
-        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_303_SEE_OTHER)
-    
-    # Create access token
-    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
+        login_url = request.url_for("login_form").include_query_params(error="Invalid credentials")
+        return RedirectResponse(url=str(login_url), status_code=status.HTTP_303_SEE_OTHER)
+
+    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+    
+    cfg = get_settings()
+    
+    # Determine the redirect target. Use 'next' query param if it exists, otherwise redirect to root.
+    parsed_url = urlparse(str(request.url))
+    query_params = dict(qc.split("=") for qc in parsed_url.query.split("&")) if parsed_url.query else {}
+    next_url = query_params.get("next")
+    
+    if next_url:
+        # Sanitize the redirect URL to prevent open redirects.
+        try:
+            urlparse(next_url) # Validate it's a proper URL
+            redirect_target_url = next_url
+            print(f"POST /login - Redirecting to 'next' URL: {redirect_target_url}")
+        except:
+            # If sanitization fails, redirect to root.
+            redirect_target_url = "/"
+            print(f"POST /login - Invalid 'next' URL, redirecting to root.")
+    else:
+        redirect_target_url = "/"
+        print(f"POST /login - No 'next' URL, redirecting to root.")
 
-    # Determine if the connection is secure (HTTPS)
-    is_secure_connection_for_cookie = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https" # Check if behind a proxy
-    )
+    response = RedirectResponse(redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
 
-    # Set the cookie
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     cookie_domain_setting = cfg.cookie_domain
-    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
+    is_secure_connection_for_cookie_set = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_set}")
 
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
         domain=cookie_domain_setting,
         path="/",
-        secure=is_secure_connection_for_cookie,
+        secure=is_secure_connection_for_cookie_set,
         httponly=True,
         samesite="Lax",
-        max_age=access_token_expires.total_seconds(),
+        max_age=int(access_token_expires.total_seconds()),
     )
     return response
 
 @router.get("/logout")
 async def logout(request: Request):
-    """Handles user logout."""
     cfg = get_settings()
-
-    # Determine redirect target.
-    parsed_url = urlparse(str(request.base_url))
-    logout_redirect_target_url = urljoin(str(cfg.moat_base_url), "/") if cfg.moat_base_url else "/"
-    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+    
+    # Determine logout redirect target.
+    parsed_url = urlparse(str(request.url))
+    query_params = dict(qc.split("=") for qc in parsed_url.query.split("&")) if parsed_url.query else {}
+    logout_next_url = query_params.get("next")
+    
+    if logout_next_url:
+        try:
+            urlparse(logout_next_url) # Validate it's a proper URL
+            logout_redirect_target_url = logout_next_url
+            print(f"GET /logout - Redirecting to 'next' URL: {logout_redirect_target_url} after logout.")
+        except:
+            logout_redirect_target_url = "/"
+            print(f"GET /logout - Invalid 'next' URL, redirecting to root after logout.")
+    else:
+        logout_redirect_target_url = "/"
+        print(f"GET /logout - Redirecting to root after logout.")
 
     response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
     
