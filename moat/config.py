@@ -19,38 +19,9 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-    with open(CONFIG_FILE_PATH, 'r') as f:
-        config_data = yaml.safe_load(f)
-        if config_data is None:
-            config_data = {}
-
-    validated_settings = MoatSettings(**config_data)
-    _settings = validated_settings
-    _config_last_modified_time = current_mtime
-    return _settings
-
-async def get_settings_async() -> MoatSettings:
-    """Asynchronous-friendly getter for settings."""
-    # This version is needed if settings are loaded during async startup.
-    global _settings
-    if _settings is None:
-        return load_config()
-    return _settings
-
-def get_settings() -> MoatSettings:
-    """Access Moat settings."""
-    global _settings
-    if _settings is None:
-        return load_config()
-    return _settings
-
-def save_settings(config_content: str) -> bool:
-    """Saves settings to the configuration file."""
-    global _settings, _config_last_modified_time
-
-    try:
-        config_data = yaml.safe_load(config_content)
+    print(f"Config: Loading configuration from
+... (FILE CONTENT TRUNCATED) ...
+ yaml.safe_load(config_content)
 
         # Validate the loaded data against the MoatSettings model
         validated_settings = MoatSettings(**config_data)
