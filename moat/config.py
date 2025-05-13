@@ -19,9 +19,31 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from
-... (FILE CONTENT TRUNCATED) ...
- yaml.safe_load(config_content)
+    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
+    try:
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config_content = f.read()
+            config_data = yaml.safe_load(config_content)
+
+        # Validate the loaded data against the MoatSettings model
+        validated_settings = MoatSettings(**config_data)
+        _settings = validated_settings
+        _config_last_modified_time = current_mtime
+        return _settings
+    except Exception as e:
+        print(f"Config: Error loading configuration from {CONFIG_FILE_PATH}: {e}")
+        raise
+
+def get_settings() -> MoatSettings:
+    if _settings is None:
+        raise RuntimeError("Settings not initialized. Call load_config() first.")
+    return _settings
+
+def save_settings(config_content: str) -> bool:
+    global _settings, _config_last_modified_time
+    try:
+        # Load the YAML data from the provided string
+        config_data = yaml.safe_load(config_content)
 
         # Validate the loaded data against the MoatSettings model
         validated_settings = MoatSettings(**config_data)
@@ -39,3 +61,14 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return False
 
 def get_current_config_as_dict() -> dict:
+    """Loads config from file and returns as dict, useful for editing."""
+    if CONFIG_FILE_PATH.exists():
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+try:
+    _settings = load_config()
+except (FileNotFoundError, ValueError) as e: # Catch parsing errors too
+    print(f"Warning: Initial config load failed ({e}). Moat may not function correctly until configured.")
+    _settings = None

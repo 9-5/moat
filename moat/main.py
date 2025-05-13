@@ -17,26 +17,4 @@ def _load_config_yaml_dict() -> dict:
             return yaml.safe_load(f) or {} # return empty dict if file is empty
     return {}
 
-# Helper for CLI to save config.yml from dict
-def _save_config_yaml_dict(config_data: dict):
-    with open(config.CONFIG_FILE_PATH, 'w') as f:
-        yaml.dump(config_data, f, sort_keys=False, default_flow_styl
-... (FILE CONTENT TRUNCATED) ...
-     _save_config_yaml_dict(cfg_dict)
-            typer.secho(f"Static service '{public_hostname}' updated.", fg=typer.colors.GREEN)
-        else:
-            typer.secho("Operation cancelled.", fg=typer.colors.YELLOW)
-        raise typer.Exit()
-
-    new_service_entry = {
-        "hostname": public_hostname,
-        "target_url": final_target_url,
-        "_comment": f"Bound to Docker container: {container.name} (ID: {container.short_id}) via docker:bind"
-    }
-    cfg_dict['static_services'].append(new_service_entry)
-    
-    _save_config_yaml_dict(cfg_dict)
-    typer.secho(f"Static service '{public_hostname}' -> '{final_target_url}' added for container '{container.name}'.", fg=typer.colors.GREEN)
-
-if __name__ == "__main__":
-    app_cli()
+# Helper for CLI to save config.yml from
