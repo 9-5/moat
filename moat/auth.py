@@ -26,89 +26,57 @@ async def authenticate_user(username: str, password: str) -> Optional[User]:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_form(request: Request, error: Optional[str] = None):
-    """Returns the login form."""
-    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+    """
+    Displays the login form.
+    """
+    next_url = request.query_params.get("next") or "/"
+    return templates.TemplateResponse("login.html", {"request": request, "next_url": next_url, "error": error})
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    """Handles user login."""
+    """
+    Handles user login.
+    """
     user = await authenticate_user(username, password)
-    if not user:
-        # Using quote_plus to safely encode the error message for URL
-        error_message = "Invalid username or password"
-        encoded_error_message = quote_plus(error_message)
-        login_url_with_error = f"/moat/auth/login?error={encoded_error_message}"
-        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_303_SEE_OTHER)
+    cfg = get_settings()
 
-    # Create access token
-    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
+    if not user:
+        login_url_with_error = router.url_path_for("login_form") + f"?error={quote_plus('Invalid username or password')}"
+        next_url = request.query_params.get("next") or "/"
+        login_url_with_error += f"&next={quote_plus(next_url)}"
+        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_303_SEE_OTHER)
+    
+    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     
-    cfg = get_settings()
-    # Determine the target URL for redirection after successful login
-    if cfg.moat_base_url:
-        # If moat_base_url is set, redirect to the base URL's path, preserving scheme and domain
-        parsed_url = urlparse(str(cfg.moat_base_url))  # Ensure it's a string
-        redirect_target_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-    else:
-        # Otherwise, redirect to the root of the current site.
-        redirect_target_url = "/"
-
-    # Create response and set cookie
-    response = RedirectResponse(redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
-
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie_set = (
+    response = RedirectResponse(request.query_params.get("next") or "/", status_code=status.HTTP_303_SEE_OTHER)
+    
+    # Determine if the connection is secure (HTTPS) - necessary for cookie security
+    is_secure_connection = (
         request.url.scheme == "https" or
         request.headers.get("x-forwarded-proto") == "https"
     )
-
-    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_set}")
-
+    print(f"POST /login - Setting cookie. Domain: '{cfg.cookie_domain}', Secure: {is_secure_connection}")
+    
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
-        domain=cookie_domain_setting,
-        httponly=True, # Make the cookie only accessible through HTTP(S), not JavaScript
-        secure=is_secure_connection_for_cookie_set,
-        samesite="Lax",
-        max_age=access_token_expires.total_seconds(),
+        domain=cfg.cookie_domain,
         path="/",
+        secure=is_secure_connection,
+        httponly=True,
+        samesite="lax",
+        expires=access_token_expires
     )
     return response
 
 @router.get("/logout")
 async def logout(request: Request):
-    """Handles user logout."""
+    """
+    Handles user logout.  Deletes the access token cookie and redirects to the specified URL.
+    """
     cfg = get_settings()
-    # Determine the logout redirect target
-    if cfg.moat_base_url:
-        # If moat_base_url is set, redirect to the base URL's path, preserving scheme and domain
-        parsed_url = urlparse(str(cfg.moat_base_url))  # Ensure it's a string
-        logout_redirect_target_url = f"{parsed_url.scheme}://{parsed_url.netloc}/"
-    else:
-        # Otherwise, redirect to the root of the current site.
-        logout_redirect_target_url = "/"
-
-    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
-
-    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
-    
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie_delete = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
-    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
-
-    response.delete_cookie(
-        ACCESS_TOKEN_COOKIE_NAME,
-        path="/",
-        domain=cookie_domain_setting,
-        secure=is_secure_connection_for_cookie_delete,
-        httponly=True,
-        samesite="Lax"
-    )
-    return response
+    logout_redirect_target_url = request.query_params.get("next") or "/"
+    print(f"GET /logou

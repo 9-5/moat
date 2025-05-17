@@ -17,18 +17,10 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = ""
+    error_message: str = None
 ):
     """Displays the configuration form."""
-    config_content = ""
-    try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_content = f.read()
-    except FileNotFoundError:
-        error_message = f"Configuration file not found: {CONFIG_FILE_PATH}"
-    except Exception as e:
-        error_message = f"Error reading configuration file: {e}"
-
+    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -43,19 +35,23 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration file."""
+    """Updates the configuration based on the submitted form."""
     try:
-        # Validate the configuration before saving. load_config performs validation.
-        validated_settings = None
-        try:
-             validated_settings = MoatSettings(**yaml.safe_load(config_content))
-        except Exception as e:
-             raise ValueError(f"Invalid configuration: {e}")
-        
+        # Validate YAML format
+        cfg_dict = yaml.safe_load(config_content)
+        if cfg_dict is None:
+            cfg_dict = {}
+
+        # Validate against MoatSettings model
+        validated_settings = MoatSettings(**cfg_dict)
+
+        # Save the new configuration
         if save_settings(validated_settings):
-            # Construct a redirect URL with the success query parameter.
-            redirect_url = request.url_for("view_config_form")
-            redirect_url = _construct_url_with_query_params(success=True, base_url=redirect_url)
+            # Apply changes to the runtime
+            await apply_settings_changes_to_runtime(old_settings=get_settings(), new_settings=validated_settings)
+
+            redirect_url = request.url.path
+            redirect_url = _construct_url_with_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."

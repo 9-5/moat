@@ -26,77 +26,66 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 ## Screenshots
 <div align="center">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-b500-452a-b5d2-93406d191664/moat-admin-dashboard.png" width="700"/>
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-e17d-4701-9c53-ef87f9038e1a/moat-admin-page.png" width="700"/>
+<img src="https://github.com/user-attachments/assets/d5ef7111-4375-4021-951f-2932782a92a8/moat-login-page.png" width="700"/>
 </div>
 
 ## Features
 
-- **Authentication**: User login and session management.
-- **Reverse Proxy**: Routes requests to internal applications based on hostname.
-- **Centralized Configuration**: Manage services and authentication from a single `config.yml` file or the web UI.
-- **Docker Integration**: Automatically discover and proxy Docker containers via labels.
-- **Admin UI**: Web interface for managing configuration and users.
+*   **Authentication**: Secure your applications with username/password authentication.
+*   **Reverse Proxy**: Route traffic to your applications based on hostname.
+*   **Centralized Management**: Configure services and authentication through a web UI or YAML file.
+*   **Docker Integration**: Automatically discover and proxy Docker containers using labels.
+*   **Single Sign-On (SSO)**: Share authentication across multiple applications using cookies.
 
 ## Prerequisites
 
-- Python 3.7+
-- Docker (if using Docker integration)
+*   Python 3.7+
+*   Docker (optional, for Docker-based service discovery)
 
 ## Installation
 
-1.  Clone the repository:
-
-    ```bash
-    git clone https://github.com/your-username/moat.git
-    cd moat
-    ```
-2.  Create a virtual environment (recommended):
-
-    ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate  # On Linux/macOS
-    .venv\Scripts\activate  # On Windows
-    ```
-3.  Install dependencies:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
+```bash
+git clone https://github.com/your-username/moat.git
+cd moat
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
 ## Configuration
 
-Moat uses a `config.yml` file for configuration.  A sample configuration file (`config.example.yml`) is provided.
+Moat is configured via a `config.yml` file. You can create a default configuration using the CLI:
 
-1.  **Initialize the configuration**:
+```bash
+moat init-config
+```
 
-    ```bash
-    moat init-config
-    ```
+Edit the `config.yml` file to set your desired settings, including:
 
-    This will create a `config.yml` file in the current directory.
-2.  **Edit `config.yml`**:
+*   `secret_key`: A randomly generated secret key used for signing cookies.  **Important**: Change this to a unique, strong value.
+*   `moat_base_url`: The public URL of your Moat instance (e.g., `https://moat.example.com`).  This is important if Moat is behind a reverse proxy or tunnel.
+*   `cookie_domain`: The domain for which cookies should be valid (e.g., `.example.com` for all subdomains).
+*   `database_url`: The URL for the database where user credentials are stored (default: `sqlite+aiosqlite:///./moat.db`).
 
-    *   **`secret_key`**:  Generate a strong, random secret key using `openssl rand -hex 32` and set it in `config.yml`.  **This is crucial for security.**
-    *   **`moat_base_url`**: The public URL of your Moat instance (e.g., `https://moat.example.com`).  Required if Moat is behind a reverse proxy or tunnel.
-    *   **`cookie_domain`**:  The domain for which cookies should be set (e.g., `.example.com` for subdomains).
-    *   **`docker_monitor_enabled`**: Set to `true` to enable automatic service discovery via Docker labels.
-    *   **`moat_label_prefix`**:  The prefix for Docker labels used by Moat (default: `moat`).
-    *   **`static_services`**:  Define static service mappings for applications not running in Docker or requiring specific configurations.
+Example `config.yml`:
 
-    ```yaml
-    listen_host: "0.0.0.0"
-    listen_port: 8000
-    secret_key: "YOUR_VERY_SECRET_KEY_CHANGE_THIS_NOW_PLEASE" # Generate with: openssl rand -hex 32
-    access_token_expire_minutes: 60
-    database_url: "sqlite+aiosqlite:///./moat.db"
-    moat_base_url: null # e.g., https://moat.yourdomain.com, required if behind a proxy/tunnel
-    cookie_domain: null # e.g., .yourdomain.com
-    docker_monitor_enabled: true
-    moat_label_prefix: "moat"
-    static_services:
-    # - hostname: "app1.example.com"
-    #   target_url: "http://localhost:3000"
-    ```
+```yaml
+listen_host: "0.0.0.0"
+listen_port: 8000
+secret_key: "YOUR_VERY_SECRET_KEY_CHANGE_THIS_NOW_PLEASE" # Generate with: openssl rand -hex 32
+access_token_expire_minutes: 60
+database_url: "sqlite+aiosqlite:///./moat.db"
+moat_base_url: "https://moat.example.com"
+cookie_domain: ".example.com"
+docker_monitor_enabled: true
+moat_label_prefix: "moat"
+static_services:
+  - hostname: "app1.example.com"
+    target_url: "http://localhost:3000"
+  - hostname: "app2.example.com"
+    target_url: "http://192.168.1.100:8080"
+```
 
 ## Running Moat
 
@@ -104,37 +93,42 @@ Moat uses a `config.yml` file for configuration.  A sample configuration file (`
 moat run
 ```
 
-This will start the Moat server.  You can then access the Moat admin UI in your browser (e.g., `https://moat.example.com/moat/admin`).
+This will start the Moat server.  Access the admin UI at `http://localhost:8000/moat/admin` (or your configured `listen_host` and `listen_port`) to create users and configure services.
 
 ## Usage
 
-1.  **Create a user**: Use the `moat create-user` CLI command to create an initial user account.
+Once Moat is running, you can access your protected services through Moat.  Moat will automatically redirect unauthenticated users to the login page.
 
-    ```bash
-    moat create-user --username admin --password securepassword
-    ```
-2.  **Configure services**:
-    *   **Docker**:  For Docker services, add labels to your containers:
+### Docker Service Discovery
 
-        ```yaml
-        labels:
-          moat.enable: "true"
-          moat.hostname: "app.example.com"
-          moat.port: "3000"
-        ```
+To automatically discover and proxy Docker containers, enable `docker_monitor_enabled` in `config.yml` and add the following labels to your containers:
 
-        Replace `app.example.com` with the desired hostname and `3000` with the container's port.
-    *   **Static Services**:  Add entries to the `static_services` section of `config.yml`.
-3.  **Access your applications**:  Once configured, Moat will handle authentication and proxy requests to your applications based on the hostname.
+*   `moat.enable=true`:  Enable Moat proxying for this container.
+*   `moat.hostname=<your_hostname>`: The public hostname for this service (e.g., `app.example.com`).
+*   `moat.port=<port_number>`:  The port the container is listening on.
+
+For example:
+
+```yaml
+version: "3.8"
+services:
+  my-app:
+    image: my-app:latest
+    labels:
+      moat.enable: "true"
+      moat.hostname: "app.example.com"
+      moat.port: "3000"
+```
+
+Moat will automatically create a reverse proxy for `app.example.com` that forwards traffic to port 3000 of the `my-app` container.
 
 ## CLI Commands
 
-*   `moat init-config`: Creates a default `config.yml` file.
 *   `moat run`: Starts the Moat server.
-*   `moat create-user`: Creates a new user account.
-*   `moat add-static-service`: Adds a static service entry to `config.yml`.
-*   `moat update-static-service`: Updates a static service entry in `config.yml`.
-*   `moat delete-static-service`: Deletes a static service entry from `config.yml`.
+*   `moat init-config`: Creates a default `config.yml` file.
+*   `moat create-user <username>`: Creates a new user.  You will be prompted for a password.
+*   `moat add-static-service <public_hostname> <target_url>`: Adds a static service configuration to `config.yml`.
+*   `moat bind <public_hostname> <container_name>`: Adds a static service bound to a Docker container.
 
 ## Troubleshooting
 
