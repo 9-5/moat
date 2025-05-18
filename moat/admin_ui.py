@@ -20,7 +20,12 @@ async def view_config_form(
     error_message: str = None
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), indent=2, sort_keys=False)
+    config_content = ""
+    try:
+        config_content = yaml.dump(load_config().model_dump(), indent=2)
+    except Exception as e:
+        error_message = f"Failed to load configuration: {e}"
+
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -35,23 +40,19 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration based on the submitted form."""
+    """Handles updating the configuration."""
+    error_message = None
     try:
         # Validate YAML format
-        cfg_dict = yaml.safe_load(config_content)
-        if cfg_dict is None:
-            cfg_dict = {}
+        yaml.safe_load(config_content)
 
-        # Validate against MoatSettings model
-        validated_settings = MoatSettings(**cfg_dict)
+        # Attempt to save the configuration
+        success = save_settings(config_content)
 
-        # Save the new configuration
-        if save_settings(validated_settings):
-            # Apply changes to the runtime
-            await apply_settings_changes_to_runtime(old_settings=get_settings(), new_settings=validated_settings)
-
-            redirect_url = request.url.path
-            redirect_url = _construct_url_with_query_params(success=True)
+        if success:
+            # Redirect with a success message
+            redirect_url = request.url_for("view_config_form")
+            redirect_url = _construct_url_with_query_params(base_url=str(redirect_url), success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
@@ -67,6 +68,7 @@ async def update_config(
         "request": request,
         "current_user": current_user,
         "config_content": config_content,
+        "success": False,
         "error_message": error_message
     })
 

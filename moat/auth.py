@@ -25,38 +25,39 @@ async def authenticate_user(username: str, password: str) -> Optional[User]:
     return User(username=user.username)
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, error: Optional[str] = None):
+async def login_form(request: Request, next: Optional[str] = None, error: Optional[str] = None):
     """
-    Displays the login form.
+    Serves the login form.
     """
-    next_url = request.query_params.get("next") or "/"
-    return templates.TemplateResponse("login.html", {"request": request, "next_url": next_url, "error": error})
+    return templates.TemplateResponse("login.html", {"request": request, "next": next, "error": error})
 
 @router.post("/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+async def login(request: Request, username: str = Form(...), password: str = Form(...), next: Optional[str] = Form(None)):
     """
-    Handles user login.
+    Handles user login. Authenticates the user and sets the access token cookie.
     """
     user = await authenticate_user(username, password)
-    cfg = get_settings()
-
     if not user:
-        login_url_with_error = router.url_path_for("login_form") + f"?error={quote_plus('Invalid username or password')}"
-        next_url = request.query_params.get("next") or "/"
-        login_url_with_error += f"&next={quote_plus(next_url)}"
-        return RedirectResponse(url=login_url_with_error, status_code=status.HTTP_303_SEE_OTHER)
-    
-    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
+        #  return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid username or password"})
+        login_url = request.url_for("login_form")  # Get the URL for the login_form route
+        error_message = "Invalid username or password"
+        encoded_error_message = quote_plus(error_message)  # URL-encode the error message
+        redirect_url = f"{login_url}?error={encoded_error_message}"  # Append the error to the URL
+        if next:
+             redirect_url += f"&next={quote_plus(next)}"
+
+        return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+
+    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
+    cfg = get_settings()
+    response = RedirectResponse(next or "/", status_code=status.HTTP_303_SEE_OTHER)
     
-    response = RedirectResponse(request.query_params.get("next") or "/", status_code=status.HTTP_303_SEE_OTHER)
-    
-    # Determine if the connection is secure (HTTPS) - necessary for cookie security
     is_secure_connection = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
+     request.url.scheme == "https" or
+     request.headers.get("x-forwarded-proto") == "https"
     )
     print(f"POST /login - Setting cookie. Domain: '{cfg.cookie_domain}', Secure: {is_secure_connection}")
     
@@ -79,4 +80,23 @@ async def logout(request: Request):
     """
     cfg = get_settings()
     logout_redirect_target_url = request.query_params.get("next") or "/"
-    print(f"GET /logou
+    print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
+
+    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie_delete = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
+
+    response.delete_cookie(
+        ACCESS_TOKEN_COOKIE_NAME,
+        path="/",
+        domain=cookie_domain_setting,
+        secure=is_secure_connection_for_cookie_delete,
+        httponly=True,
+        samesite="Lax"
+    )
+    return response
