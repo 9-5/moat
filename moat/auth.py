@@ -24,62 +24,60 @@ async def authenticate_user(username: str, password: str) -> Optional[User]:
         return None
     return User(username=user.username)
 
+
 @router.get("/login", response_class=HTMLResponse)
-async def login_form(request: Request, next: Optional[str] = None, error: Optional[str] = None):
-    """
-    Serves the login form.
-    """
-    return templates.TemplateResponse("login.html", {"request": request, "next": next, "error": error})
+async def login_form(request: Request, error: str = None):
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
-@router.post("/login")
-async def login(request: Request, username: str = Form(...), password: str = Form(...), next: Optional[str] = Form(None)):
-    """
-    Handles user login. Authenticates the user and sets the access token cookie.
-    """
+
+@router.post("/login", response_class=HTMLResponse)
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
     user = await authenticate_user(username, password)
+    cfg = get_settings()
+
     if not user:
-        #  return templates.TemplateResponse("login.html", {"request": request, "error": "Invalid username or password"})
-        login_url = request.url_for("login_form")  # Get the URL for the login_form route
-        error_message = "Invalid username or password"
-        encoded_error_message = quote_plus(error_message)  # URL-encode the error message
-        redirect_url = f"{login_url}?error={encoded_error_message}"  # Append the error to the URL
-        if next:
-             redirect_url += f"&next={quote_plus(next)}"
+        # Using quote_plus to safely include the error message in the URL
+        error_message = quote_plus("Invalid username or password")
+        login_url = request.url_for("login_form").include_query_params(error=error_message)
+        return RedirectResponse(login_url, status_code=status.HTTP_303_SEE_OTHER)
 
-        return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
-
-    access_token_expires = timedelta(minutes=get_settings().access_token_expire_minutes)
+    access_token_expires = timedelta(minutes=cfg.access_token_expire_minutes)
     access_token = create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    cfg = get_settings()
-    response = RedirectResponse(next or "/", status_code=status.HTTP_303_SEE_OTHER)
     
-    is_secure_connection = (
-     request.url.scheme == "https" or
-     request.headers.get("x-forwarded-proto") == "https"
+    response = RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    
+    cookie_domain_setting = cfg.cookie_domain
+    is_secure_connection_for_cookie = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
     )
-    print(f"POST /login - Setting cookie. Domain: '{cfg.cookie_domain}', Secure: {is_secure_connection}")
-    
+
+    print(f"POST /login - Setting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie}")
+
     response.set_cookie(
         ACCESS_TOKEN_COOKIE_NAME,
         value=access_token,
-        domain=cfg.cookie_domain,
+        domain=cookie_domain_setting,
         path="/",
-        secure=is_secure_connection,
+        secure=is_secure_connection_for_cookie,
         httponly=True,
-        samesite="lax",
-        expires=access_token_expires
+        samesite="Lax",
+        max_age=access_token_expires.total_seconds()
     )
     return response
 
+
 @router.get("/logout")
 async def logout(request: Request):
-    """
-    Handles user logout.  Deletes the access token cookie and redirects to the specified URL.
-    """
     cfg = get_settings()
-    logout_redirect_target_url = request.query_params.get("next") or "/"
+    moat_base_url = cfg.moat_base_url
+    if moat_base_url:
+        logout_redirect_target_url = str(moat_base_url)
+    else:
+        logout_redirect_target_url = "/"
+
     print(f"GET /logout - Redirecting to: {logout_redirect_target_url} after logout.")
 
     response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)

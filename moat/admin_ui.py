@@ -20,11 +20,7 @@ async def view_config_form(
     error_message: str = None
 ):
     """Displays the configuration form."""
-    config_content = ""
-    try:
-        config_content = yaml.dump(load_config().model_dump(), indent=2)
-    except Exception as e:
-        error_message = f"Failed to load configuration: {e}"
+    config_content = yaml.dump(load_config().model_dump(), indent=2)
 
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
@@ -40,19 +36,19 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Handles updating the configuration."""
-    error_message = None
+    """Updates the configuration."""
     try:
-        # Validate YAML format
+        # Validate YAML format first
         yaml.safe_load(config_content)
 
-        # Attempt to save the configuration
-        success = save_settings(config_content)
+        # Attempt to save the settings
+        if save_settings(config_content):
+            # Reload config immediately
+            load_config(force_reload=True)
+            await apply_settings_changes_to_runtime(None, get_settings())
 
-        if success:
-            # Redirect with a success message
-            redirect_url = request.url_for("view_config_form")
-            redirect_url = _construct_url_with_query_params(base_url=str(redirect_url), success=True)
+            # Construct redirect URL with success parameter
+            redirect_url = request.url.include_query_params(success="true")
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
@@ -71,15 +67,3 @@ async def update_config(
         "success": False,
         "error_message": error_message
     })
-
-def _construct_url_with_query_params(base_url: str = "", params: dict = {}, success: bool = False, error_message: str = None) -> str:
-    """Constructs a URL with query parameters."""
-    if success:
-        params["success"] = "true"
-    if error_message:
-        params["error_message"] = error_message
-
-    query_string = "&".join([f"{key}={value}" for key, value in params.items()])
-    if query_string:
-        return f"{base_url}?{query_string}"
-    return base_url
