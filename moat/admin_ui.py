@@ -17,10 +17,15 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = None
+    error_message: str = ""
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(load_config().model_dump(), indent=2)
+    config_content = ""
+    try:
+        with open(CONFIG_FILE_PATH, 'r') as f:
+            config_content = f.read()
+    except FileNotFoundError:
+        error_message = "Configuration file not found."
 
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
@@ -36,19 +41,13 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration."""
+    """Updates the configuration based on the submitted form."""
     try:
-        # Validate YAML format first
-        yaml.safe_load(config_content)
+        cfg = get_settings()
+        success = save_settings(config_content)
 
-        # Attempt to save the settings
-        if save_settings(config_content):
-            # Reload config immediately
-            load_config(force_reload=True)
-            await apply_settings_changes_to_runtime(None, get_settings())
-
-            # Construct redirect URL with success parameter
-            redirect_url = request.url.include_query_params(success="true")
+        if success:
+            redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
