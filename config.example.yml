@@ -7,6 +7,7 @@ moat_base_url: https://moat.bor.i.ng
 cookie_domain: .bor.i.ng
 docker_monitor_enabled: false
 moat_label_prefix: moat
+default_redirect_url: https://app.bor.i.ng
 static_services:
 - hostname: app.bor.i.ng
   target_url: http://127.0.0.1:9090

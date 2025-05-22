@@ -19,13 +19,9 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """Displays the configuration form."""
-    config_content = ""
-    try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_content = f.read()
-    except FileNotFoundError:
-        error_message = "Configuration file not found."
+    """Displays the configuration form with the current settings."""
+    cfg = get_settings()
+    config_content = yaml.dump(cfg.model_dump(), sort_keys=False)
 
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
@@ -35,18 +31,26 @@ async def view_config_form(
         "error_message": error_message
     })
 
+
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration based on the submitted form."""
+    """Updates the configuration based on the submitted form data."""
     try:
-        cfg = get_settings()
-        success = save_settings(config_content)
+        # Load and validate the configuration from the form
+        new_config_data = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**new_config_data)
 
-        if success:
+        # Attempt to save the new settings
+        if await save_settings(validated_settings):
+            # Apply the changes to the runtime environment
+            cfg = get_settings()
+            asyncio.create_task(apply_settings_changes_to_runtime(cfg, validated_settings)) #Non-blocking call
+
+            # Redirect back to the config page with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

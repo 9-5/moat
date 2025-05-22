@@ -16,7 +16,7 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 [Configuration](#configuration)
 
-[Running Moat](#running-Moat)
+[Running Moat](#running-moat)
 
 [Usage](#usage)
 
@@ -26,9 +26,75 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 ## Screenshots
 <div align="center">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-
-... (FILE CONTENT TRUNCATED) ...
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-b279-9f771487999c/moat-admin-config.png" width="800" />
+<p>Admin configuration UI</p>
+</div>
+<div align="center">
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-b279-9f771487999c/moat-login.png" width="800" />
+<p>Login page</p>
+</div>
 
+## Features
+
+*   **Centralized Authentication:** Protect multiple applications with a single login.
+*   **Reverse Proxy:** Routes traffic to your applications after successful authentication.
+*   **Docker Integration:** Automatically discover and proxy Docker containers based on labels.
+*   **Static Configuration:** Define services manually for non-Docker applications.
+*   **Admin UI:** Web interface for managing configuration.
+*   **Secure Cookie Handling:** Configurable cookie domain and security settings.
+*   **Cloudflare Tunnel support**: Detailed guide for integration with Cloudflare Tunnels.
+
+## Prerequisites
+
+*   Python 3.7+
+*   Docker (optional, for Docker integration)
+
+## Installation
+
+1.  Clone the repository:
+
+    ```bash
+    git clone https://github.com/jordanbaird/moat.git
+    cd moat
+    ```
+2.  Create a virtual environment:
+
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+3.  Install dependencies:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+## Configuration
+
+1.  Initialize the configuration file:
+
+    ```bash
+    moat init-config
+    ```
+2.  Edit `config.yml` to set your desired settings.  Pay CLOSE attention to `secret_key`, `moat_base_url`, and `cookie_domain`.
+
+## Running Moat
+
+```bash
+python3 -m moat.main run
+```
+
+## Usage
+
+Once Moat is running, access it through your configured `moat_base_url`.  You will be prompted to create an initial user.  After logging in, you can access your proxied applications through their configured hostnames.
+
+## CLI Commands
+
+*   `moat init-config`: Creates a default `config.yml` file.
+*   `moat run`: Starts the Moat server.
+*   `moat add-user <username>`: Creates a new user.  The command will prompt you for a password.
+*   `moat add-static-service <public_hostname> <target_url>`: Manually configures a reverse proxy entry.
+*   `moat bind-static-service <public_hostname> <container_name>`: Automatically configures a reverse proxy entry based on a running Docker container.
 
 ## Troubleshooting
 
