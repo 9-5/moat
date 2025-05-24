@@ -5,83 +5,67 @@
 1.  **Moat:** Runs on your local server (or inside a Docker container on that server), listening on a local port (e.g., `localhost:8000`). It handles authentication and reverse proxies requests to your backend services.
 2.  **Backend Services:** These are your actual applications, running locally (e.g., `localhost:3001`, or as Docker containers like `http://my-app-container:80`). Moat needs to be able to reach these on the local network.
 3.  **`cloudflared`:** A small daemon from Cloudflare that runs on the same server as Moat. It creates a secure, outbound-only connection to Cloudflare's edge network.
-4.  **Cloudflare's Edge:** When a user accesses your publicly accessible domain (e.g., `myapp.yourdomain.com`), Cloudflare's edge network receives the request.
-5.  **The Tunnel:** The `cloudflared` daemon establishes an encrypted tunnel to Cloudflare's edge.
-6.  **Proxying:** Cloudflare then proxies the incoming request **through the tunnel** to your `cloudflared` instance.
-7.  **Moat's Role:** `cloudflared` forwards the request to Moat. Moat authenticates the user (or redirects to the login page), and if successful, proxies the request to your backend service.
-8.  **Response:** The response follows the reverse path: Backend Service -> Moat -> `cloudflared` -> Cloudflare Edge -> User.
+4.  **Cloudflare's Edge:** When a user accesses your public hostname (e.g., `app.yourdomain.com`), Cloudflare's edge network receives the request.
+5.  **The Tunnel:** The `cloudflared` daemon creates an outbound-only tunnel to Cloudflare's edge, allowing traffic to flow to Moat without opening any inbound ports on your server.
+6.  **Moat's Role:** Moat authenticates the user (if required) and then reverse proxies the request to the appropriate backend service.
 
-**Why Cloudflare Tunnel?**
+**Diagram:**
 
-*   **Security:** No open inbound ports on your server. The connection is outbound-only, reducing the attack surface.
-*   **DDOS Protection:** Cloudflare provides DDOS protection and other security features.
-*   **SSL/TLS:** Cloudflare handles SSL/TLS termination, so you don't need to manage certificates on your server (though you *can* use "Full (strict)" mode for end-to-end encryption).
-*   **Global Network:** Cloudflare's global network provides faster and more reliable access to your services.
+```
+User --> Cloudflare Edge --> cloudflared (Tunnel) --> Moat --> Backend Service
+```
 
 **Steps:**
 
-1.  **Install `cloudflared`:** Follow Cloudflare's official documentation to install `cloudflared` on your server.
-2.  **Authenticate `cloudflared`:** Authenticate `cloudflared` with your Cloudflare account. This typically involves logging in through a browser and selecting your domain.
-3.  **Create a Tunnel:** Create a tunnel using `cloudflared tunnel create <tunnel-name>`.
-4.  **Configure the Tunnel:** Create a `config.yml` file for `cloudflared` (usually in `~/.cloudflared/config.yml`).  This file defines how `cloudflared` will route traffic.  Here's a basic example:
+1.  **Install and Configure `cloudflared`:** Follow Cloudflare's official documentation to install `cloudflared` on your server.
+2.  **Create a Tunnel:** Use `cloudflared tunnel create <tunnel-name>` to create a new tunnel.
+3.  **Authenticate `cloudflared`:** Use `cloudflared tunnel login` to authenticate the `cloudflared` daemon with your Cloudflare account.
+4.  **Create DNS Records:** Use `cloudflared tunnel route dns <tunnel-name> <hostname>` to create DNS records in Cloudflare that point to your tunnel.  For example:
+    ```bash
+    cloudflared tunnel route dns my-tunnel moat.yourdomain.com
+    cloudflared tunnel route dns my-tunnel app.yourdomain.com
+    cloudflared tunnel route dns my-tunnel anotherapp.yourdomain.com
+    ```
+    This will route traffic for `moat.yourdomain.com`, `app.yourdomain.com`, and `anotherapp.yourdomain.com` through the tunnel.  `moat.yourdomain.com` should point to your Moat instance.
+5.  **Create a Configuration File:** Create a `config.yml` file for `cloudflared` (typically located at `~/.cloudflared/config.yml`).  This file specifies how `cloudflared` should route traffic.  A basic example:
 
     ```yaml
     tunnel: <your-tunnel-id>
     credentials-file: /root/.cloudflared/<your-tunnel-id>.json
 
     ingress:
-      - hostname: moat.yourdomain.com # The public hostname for Moat itself
-        service: http://localhost:8000  # Where Moat is running
-      - hostname: app1.yourdomain.com  # Example app
-        service: http://localhost:3001  # Where app1 is running
-      - service: http_status:404 # Catch-all
+      - hostname: moat.yourdomain.com
+        service: http://localhost:8000  # Moat's local address
+
+      - hostname: app.yourdomain.com
+        service: http://localhost:3001  # Your backend application
+
+      - hostname: anotherapp.yourdomain.com
+        service: http://localhost:3002 # Another backend application
+
+      - service: http_status:404
     ```
 
-    **Important Considerations:**
+    *   Replace `<your-tunnel-id>` with the actual tunnel ID.
+    *   Adjust the `hostname` and `service` values to match your setup.  `localhost:8000` assumes Moat is running on the same server as `cloudflared` and listening on port 8000.  The other services point to your backend applications.
+    *   The final `service: http_status:404` entry is a catch-all that returns a 404 error for any unmatched hostnames.
 
-    *   Replace `<your-tunnel-id>` with the actual Tunnel ID.
-    *   Ensure the `hostname` values match the DNS records you'll create in Cloudflare.
-    *   The `service` entries point to the **internal** addresses of your services.  Moat must be able to reach these addresses.
-    *   Moat itself needs a `hostname` entry in the `cloudflared` config so that Cloudflare knows where to route traffic for Moat's login page and admin UI.
-5.  **Create DNS Records:** Use the `cloudflared tunnel route dns` command to create DNS records in Cloudflare that point your hostnames to the tunnel. For example:
+6.  **Run the Tunnel:** Start the tunnel using `cloudflared tunnel run <tunnel-name>`.
+7.  **Configure Moat:**
+    *   Set `moat_base_url` in Moat's `config.yml` to `https://moat.yourdomain.com`.  This is **critical** for correct redirects and cookie handling.
+    *   Set `cookie_domain` in Moat's `config.yml` to `.yourdomain.com` to ensure cookies work correctly across subdomains.
 
-    ```bash
-    cloudflared tunnel route dns <tunnel-name> moat.yourdomain.com
-    cloudflared tunnel route dns <tunnel-name> app1.yourdomain.com
-    ```
+**Important Considerations:**
 
-    Alternatively, you can manually create CNAME records in the Cloudflare dashboard.  The target should be the tunnel's assigned `cfargotunnel.com` address.
-6.  **Run the Tunnel:** Start the tunnel using `cloudflared tunnel run <tunnel-name>`.  You can run this in the background using a service manager like `systemd`.
-7.  **Configure Moat:**  In Moat's `config.yml`:
+*   **HTTPS:** Cloudflare tunnels automatically handle HTTPS.  You do **not** need to configure HTTPS certificates on your local server for traffic coming through the tunnel.
+*   **Security:** Cloudflare tunnels are outbound-only, meaning no inbound ports need to be opened on your server, significantly improving security.
+*   **Moat's `moat_base_url`:** This setting is absolutely crucial.  It tells Moat the public URL it is accessible at.  If this is incorrect, you will experience redirect loops or other issues.
+*   **Cookie Domain:** The `cookie_domain` setting in Moat's `config.yml` must be set correctly for SSO to work across subdomains.
 
-    *   Set `moat_base_url` to the **public hostname** you're using for Moat in Cloudflare (e.g., `https://moat.yourdomain.com`).  This is crucial for redirects to work correctly.
-    *   Set `cookie_domain` to your domain (e.g., `.yourdomain.com`) so cookies work across subdomains.
-8.  **Access your Services:**  Access your services through the hostnames you configured in Cloudflare.  You should be redirected to Moat for authentication.
+**Troubleshooting:**
 
-**Example `moat.config.yml`:**
-
-```yaml
-listen_host: 0.0.0.0
-listen_port: 8000
-secret_key: "YOUR_VERY_SECRET_KEY_CHANGE_THIS_NOW_PLEASE"
-access_token_expire_minutes: 60
-database_url: "sqlite+aiosqlite:///./moat.db"
-moat_base_url: https://moat.yourdomain.com  # MUST match Cloudflare tunnel hostname
-cookie_domain: .yourdomain.com           # For SSO across subdomains
-docker_monitor_enabled: false
-moat_label_prefix: "moat"
-static_services:
-  - hostname: app1.yourdomain.com       # MUST match Cloudflare tunnel hostname
-    target_url: http://localhost:3001  # Internal address of the app
-```
-
-**Troubleshooting with Cloudflare Tunnel and Moat:**
-
-*   **Ensure `cloudflared` is Running:** Verify that the `cloudflared` tunnel is running without errors. Check its logs.
-*   **DNS Propagation:**  It can take a few minutes for DNS records to propagate after creating them in Cloudflare.
-*   **SSL/TLS Configuration:**  In Cloudflare, the "SSL/TLS encryption mode" setting should generally be set to "Full" or "Full (strict)".  "Flexible" mode can cause issues with HTTPS proxying.
-*   **`cloudflared` config.yml Syntax:** Double-check the syntax of your `cloudflared` config.yml file.  YAML is sensitive to indentation.  Use a YAML validator.
-*   **Moat Base URL:** `moat_base_url` in `moat.config.yml` **must** be the public-facing URL served by Cloudflare proxying.
+*   **Cloudflared Connection Issues:** Check the `cloudflared` logs for errors.  Ensure the tunnel is running and properly authenticated.
+*   **Moat Not Accessible:** Ensure the `cloudflared` configuration is routing traffic to Moat's local address (e.g., `localhost:8000`).
 *   **Redirect Loops:**
     *   Verify `moat_base_url` in Moat's `config.yml` is **exactly** `https://moat.yourdomain.com` (or your equivalent).
     *   Check `X-Forwarded-Proto` and `X-Forwarded-Host` headers. Cloudflare tunnels generally set these correctly.

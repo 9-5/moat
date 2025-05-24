@@ -26,27 +26,23 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 
 ## Screenshots
 <div align="center">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-b279-9f771487999c/moat-admin-config.png" width="800" />
-<p>Admin configuration UI</p>
-</div>
-<div align="center">
-<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-b279-9f771487999c/moat-login.png" width="800" />
-<p>Login page</p>
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-4dd8-41bd-8a76-055efb922319/moat-login.png" height="300" width="600"/>
+<img src="https://github.com/user-attachments/assets/917da6b1-d226-40cb-9f44-4dd8-41bd-8a76-055efb922319/moat-admin.png" height="300" width="600"/>
 </div>
 
 ## Features
 
-*   **Centralized Authentication:** Protect multiple applications with a single login.
-*   **Reverse Proxy:** Routes traffic to your applications after successful authentication.
-*   **Docker Integration:** Automatically discover and proxy Docker containers based on labels.
-*   **Static Configuration:** Define services manually for non-Docker applications.
-*   **Admin UI:** Web interface for managing configuration.
-*   **Secure Cookie Handling:** Configurable cookie domain and security settings.
-*   **Cloudflare Tunnel support**: Detailed guide for integration with Cloudflare Tunnels.
+*   **Authentication**: User login with password protection.
+*   **Reverse Proxy**: Routes traffic to backend services based on hostname.
+*   **Docker Integration**: Automatically discovers and proxies Docker containers.
+*   **Centralized Configuration**: Manage settings via a single `config.yml` file and an admin UI.
+*   **Single Sign-On (SSO)**: Streamlines access to multiple applications.
+*   **Admin UI**: Web interface for configuring Moat.
+*   **CLI Tools**: Command-line interface for initialization and management.
 
 ## Prerequisites
 
-*   Python 3.7+
+*   Python 3.9+
 *   Docker (optional, for Docker integration)
 
 ## Installation
@@ -54,16 +50,16 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
 1.  Clone the repository:
 
     ```bash
-    git clone https://github.com/jordanbaird/moat.git
+    git clone https://github.com/your-username/moat.git
     cd moat
     ```
 2.  Create a virtual environment:
 
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
     ```
-3.  Install dependencies:
+3.  Install the dependencies:
 
     ```bash
     pip install -r requirements.txt
@@ -76,25 +72,41 @@ Moat is a lightweight, FastAPI-based security gateway that provides authenticati
     ```bash
     moat init-config
     ```
-2.  Edit `config.yml` to set your desired settings.  Pay CLOSE attention to `secret_key`, `moat_base_url`, and `cookie_domain`.
+
+    This creates a `config.yml` file in your working directory.
+2.  Edit `config.yml` to set the `secret_key`, `moat_base_url`, `cookie_domain`, and other settings.  **Important:**  Set a strong, randomly generated `secret_key`.
+    ```bash
+    openssl rand -hex 32
+    ```
+3. Configure static services or docker integration as required.
 
 ## Running Moat
 
 ```bash
-python3 -m moat.main run
+moat run
+```
+
+This starts the Moat server.  You can optionally specify the host and port:
+
+```bash
+moat run --host 0.0.0.0 --port 8080
 ```
 
 ## Usage
 
-Once Moat is running, access it through your configured `moat_base_url`.  You will be prompted to create an initial user.  After logging in, you can access your proxied applications through their configured hostnames.
+Once Moat is running, access the admin UI to configure users and services.  The admin UI is typically located at `/moat/admin` on your Moat instance (e.g., `https://moat.yourdomain.com/moat/admin`).
+
+1.  **Create a User:** Use the `moat create-user` CLI command to create an initial user account.
+2.  **Configure Services:** Add static service definitions in `config.yml` or enable Docker integration to automatically discover services.
+3.  **Access Applications:** Access your applications through the hostnames you configured (e.g., `app.yourdomain.com`).  Moat will redirect unauthenticated users to the login page.
 
 ## CLI Commands
 
-*   `moat init-config`: Creates a default `config.yml` file.
 *   `moat run`: Starts the Moat server.
-*   `moat add-user <username>`: Creates a new user.  The command will prompt you for a password.
-*   `moat add-static-service <public_hostname> <target_url>`: Manually configures a reverse proxy entry.
-*   `moat bind-static-service <public_hostname> <container_name>`: Automatically configures a reverse proxy entry based on a running Docker container.
+*   `moat init-config`: Creates a default `config.yml` file.
+*   `moat create-user`: Creates a new user account.
+*   `moat add-static`:  Adds a static service to the config file.
+*   `moat docker:bind`:  Adds a static service bound to a docker container to the config file.
 
 ## Troubleshooting
 
