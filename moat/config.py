@@ -20,38 +20,35 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return _settings
 
     print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-
     try:
         with open(CONFIG_FILE_PATH, 'r') as f:
             config_data = yaml.safe_load(f)
-            if config_data is None:
-                config_data = {}
+    except Exception as e:
+        raise ValueError(f"Error loading configuration from {CONFIG_FILE_PATH}: {e}")
+
+    try:
         validated_settings = MoatSettings(**config_data)
     except Exception as e:
-        raise ValueError(f"Error loading or validating config: {e}") from e
-
+        raise ValueError(f"Error validating configuration against MoatSettings model: {e}")
+    
     _settings = validated_settings
-    _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
+    _config_last_modified_time = current_mtime
     return _settings
 
 def get_settings() -> MoatSettings:
     if _settings is None:
-        raise RuntimeError("Settings not initialized. Call load_config() first or ensure it's loaded during app startup.")
+        raise ValueError("Settings have not been loaded yet.  Call load_config() first.")
     return _settings
 
 def save_settings(config_content: str) -> bool:
     global _settings, _config_last_modified_time
-    try:
-        # Parse YAML content
-        cfg_dict = yaml.safe_load(config_content)
-        
-        # Validate the new settings using pydantic model
-        validated_settings = MoatSettings(**cfg_dict)
 
-        # Write the validated settings back to the config file
+    try:
+        config_data = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**config_data) # Validate before saving
+        
         with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(validated_settings.model_dump(), f, sort_keys=False)
-        print(f"Config: Saved new settings to {CONFIG_FILE_PATH}")
+            yaml.dump(config_data, f, sort_keys=False) #Dump data, not the pydantic model
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True

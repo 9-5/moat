@@ -12,9 +12,6 @@ moat_base_url: null
 # Ensure this matches how your applications are accessed.
 cookie_domain: null
 
-# The default URL to redirect to after successful login. If null, redirects to the originally requested URL.
-default_redirect_url: null
-
 # Docker label monitoring settings
 docker_monitor_enabled: true
 moat_label_prefix: "moat" # e.g., moat.enable, moat.hostname
