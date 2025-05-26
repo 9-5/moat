@@ -18,12 +18,14 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     if not token:
         print("No token found in cookie.")
         return None
-    
+
     payload = decode_access_token(token)
-    if payload is None:
-        print("Token is invalid.")
+    if not payload:
+        print("Invalid token.")
         return None
-    username: str = payload.get("sub")
+
+    username = payload.get("sub")
+    # username = payload.get("sub")
     if username is None:
         print("Token has no subject.")
         return None
@@ -44,3 +46,18 @@ async def get_current_user_or_redirect(request: Request) -> User:
 
         # Manually construct the "Set-Cookie" header to delete the cookie,
         # including
+        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+            delete_cookie_header_val += "; Secure"
+        if cfg.cookie_domain: # Add domain if configured for deletion
+            delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
+        headers["Set-Cookie"] = delete_cookie_header_val
+
+        raise HTTPException(
+            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+            detail="Not authenticated, redirecting to login.",
+            headers=headers
+        )
+        
+    print(f"User '{user.username}' authenticated successfully for {request.url}, proceeding with request.")
+    return user

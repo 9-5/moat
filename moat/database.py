@@ -25,10 +25,7 @@ async def init_db():
 
 async def get_user(username: str) -> Optional[UserInDB]:
     conn = await get_db_connection()
-    cursor = await conn.execute(
-        "SELECT username, hashed_password FROM users WHERE username = ?",
-        (username,)
-    )
+    cursor = await conn.execute("SELECT username, hashed_password FROM users WHERE username = ?", (username,))
     row = await cursor.fetchone()
     await cursor.close()
     await conn.close()

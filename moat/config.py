@@ -23,32 +23,30 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     try:
         with open(CONFIG_FILE_PATH, 'r') as f:
             config_data = yaml.safe_load(f)
-    except Exception as e:
-        raise ValueError(f"Error loading configuration from {CONFIG_FILE_PATH}: {e}")
-
-    try:
-        validated_settings = MoatSettings(**config_data)
-    except Exception as e:
-        raise ValueError(f"Error validating configuration against MoatSettings model: {e}")
-    
-    _settings = validated_settings
-    _config_last_modified_time = current_mtime
-    return _settings
+            if config_data is None:
+                config_data = {} # Treat empty file as empty dict
+            validated_settings = MoatSettings(**config_data)
+            _settings = validated_settings
+            _config_last_modified_time = current_mtime
+            return _settings
+    except (yaml.YAMLError, ValueError) as e:
+        print(f"Config: Error loading configuration from {CONFIG_FILE_PATH}: {e}")
+        raise
 
 def get_settings() -> MoatSettings:
     if _settings is None:
-        raise ValueError("Settings have not been loaded yet.  Call load_config() first.")
+        raise RuntimeError("Settings not initialized.  Ensure config.load_config() has been called.")
     return _settings
 
-def save_settings(config_content: str) -> bool:
+def save_settings(new_settings_dict: dict) -> bool:
+    """Saves the settings to the config file after validating against the Pydantic model."""
     global _settings, _config_last_modified_time
-
     try:
-        config_data = yaml.safe_load(config_content)
-        validated_settings = MoatSettings(**config_data) # Validate before saving
+        validated_settings = MoatSettings(**new_settings_dict) # Validate before saving!
         
         with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(config_data, f, sort_keys=False) #Dump data, not the pydantic model
+            yaml.dump(validated_settings.model_dump(), f, sort_keys=False)  # Save from the pydantic model
+        print(f"Config: Saved new configuration to {CONFIG_FILE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
