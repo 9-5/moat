@@ -16,37 +16,9 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        print("No token found in cookie.")
-        return None
-
-    payload = decode_access_token(token)
-    if not payload:
-        print("Invalid token.")
-        return None
-
-    username = payload.get("sub")
-    # username = payload.get("sub")
-    if username is None:
-        print("Token has no subject.")
-        return None
-    user = User(username=username)
-    print(f"Decoded username from token: {user.username}")
-    return user
-
-async def get_current_user_or_redirect(request: Request) -> User:
-    cfg = get_settings()
-    user = await get_current_user_from_cookie(request)
-    if user is None:
-        print("No current user, redirecting to login.")
-        #Construct the login URL, preserving the original path in 'next'
-        next_url = quote_plus(str(request.url))
-        login_url = f"/moat/auth/login?next={next_url}"
         
-        headers = {"Location": login_url}
-
-        # Manually construct the "Set-Cookie" header to delete the cookie,
-        # including
-        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
+... (FILE CONTENT TRUNCATED) ...
+e_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion

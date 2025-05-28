@@ -4,11 +4,10 @@ from fastapi.templating import Jinja2Templates
 import yaml
 import asyncio
 
-from moat.models import User 
+from moat.models import User
 from moat.dependencies import get_current_user_or_redirect
 from moat.config import get_settings, save_settings, CONFIG_FILE_PATH, load_config
 from moat.runtime_config import apply_settings_changes_to_runtime
-from moat.utils import make_url_with_query_params
 
 router = APIRouter(prefix="/moat/admin", tags=["admin_ui"])
 templates = Jinja2Templates(directory="moat/templates")
@@ -20,7 +19,7 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
+    config_content = yaml.dump(load_config().model_dump(), indent=2)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -36,9 +35,14 @@ async def update_config(
     config_content: str = Form(...)
 ):
     try:
-        cfg_dict = yaml.safe_load(config_content)
-        if save_settings(cfg_dict):
-            # Redirect with success=True query parameter
+        # Load the YAML to ensure it's valid and matches the schema
+        yaml_data = yaml.safe_load(config_content)
+
+        # Validate the YAML data against the MoatSettings model
+        validated_settings = MoatSettings(**yaml_data)
+
+        # Save new configuration
+        if await save_settings(validated_settings):
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
@@ -46,7 +50,7 @@ async def update_config(
 
     except yaml.YAMLError as ye:
         error_message = f"Invalid YAML format: {ye}"
-    except ValueError as ve: 
+    except ValueError as ve:
         error_message = f"Configuration validation error: {ve}"
     except Exception as e:
         error_message = f"An unexpected error occurred: {e}"
@@ -58,3 +62,28 @@ async def update_config(
         "success": False,
         "error_message": error_message
     })
+
+@router.post("/reload", response_class=HTMLResponse)
+async def reload_config(
+    request: Request,
+    current_user: User = Depends(get_current_user_or_redirect),
+):
+    try:
+        load_config(force_reload=True)
+        success_message = "Configuration reloaded successfully."
+        return templates.TemplateResponse("admin_config.html", {
+            "request": request,
+            "current_user": current_user,
+            "config_content": yaml.dump(load_config().model_dump(), indent=2),
+            "success": True,
+            "error_message": success_message
+        })
+    except Exception as e:
+        error_message = f"Failed to reload configuration: {e}"
+        return templates.TemplateResponse("admin_config.html", {
+            "request": request,
+            "current_user": current_user,
+            "config_content": yaml.dump(load_config().model_dump(), indent=2),
+            "success": False,
+            "error_message": error_message
+        })
