@@ -19,12 +19,7 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """Displays the Moat configuration form."""
-    try:
-        config_content = yaml.dump(load_config().model_dump(), indent=2)
-    except Exception as e:
-        config_content = f"Error loading config: {e}"
-        error_message = f"Error loading config from file: {e}"  # More specific error
+    config_content = yaml.dump(load_config().model_dump(exclude_unset=True), sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -40,24 +35,23 @@ async def update_config(
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the Moat configuration from the submitted form data."""
     try:
-        # Attempt to load the YAML data
-        cfg_dict = yaml.safe_load(config_content)
+        # Load and validate the configuration.
+        cfg = get_settings() # Load current config, as load_config can raise errors.
+        old_settings = copy.deepcopy(cfg) # Capture old settings BEFORE modification.
 
-        # Validate the loaded data against the MoatSettings model
-        cfg = MoatSettings(**cfg_dict)
+        new_config = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**new_config) #pydantic validation
 
         # Save the validated settings
-        if save_settings(cfg):
-            # Successfully saved, now apply runtime changes
-            await apply_settings_changes_to_runtime(None, cfg)
-
-            # Redirect back to the config page with a success message.
-            redirect_url = request.url_for("view_config_form")
-            success_query_params = {"success": "true"}
-            redirect_url = str(request.url.include_query_params(**success_query_params))
-            return RedirectResponse(url=redirect_url, status_code=status.HTTP_303_SEE_OTHER)
+        if save_settings(validated_settings):
+            # Apply the changes to the runtime environment.
+            asyncio.create_task(apply_settings_changes_to_runtime(old_settings, validated_settings))
+            
+            # Redirect with a success message. Use 303 to avoid resubmission on refresh.
+            query_params = {"success": "true"}
+            redirect_url = request.url.include_query_params(**query_params)
+            return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
 
