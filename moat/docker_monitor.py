@@ -20,7 +20,6 @@ async def is_docker_monitor_running() -> bool:
     global _monitor_task_active
     return _monitor_task_active
 
-
 async def process_container_labels(container, action: 
 ... (FILE CONTENT TRUNCATED) ...
 y_container_id(event["id"])

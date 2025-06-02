@@ -18,6 +18,7 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     if not token:
         
 ... (FILE CONTENT TRUNCATED) ...
+
 e_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
         if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"

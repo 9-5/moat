@@ -3,7 +3,7 @@ import uvicorn
 import asyncio
 from pathlib import Path
 import yaml
-import docker 
+import docker
 from docker.errors import NotFound as DockerNotFound # type: ignore
 from typing import Optional
 
@@ -22,6 +22,7 @@ def _save_config_yaml_dict(config_data: dict):
     with open(config.CONFIG_FILE_PATH, 'w') as f:
         yaml.dump(config_data, f, sort_keys=False, default_flow_styl
 ... (FILE CONTENT TRUNCATED) ...
+
      _save_config_yaml_dict(cfg_dict)
             typer.secho(f"Static service '{public_hostname}' updated.", fg=typer.colors.GREEN)
         else:
