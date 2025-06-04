@@ -12,6 +12,10 @@ moat_base_url: null
 # Ensure this matches how your applications are accessed.
 cookie_domain: null
 
+# Override default login and logout URLs.  Useful when integrating with existing authentication flows.
+login_url: null
+logout_url: null
+
 # Docker label monitoring settings
 docker_monitor_enabled: true
 moat_label_prefix: "moat" # e.g., moat.enable, moat.hostname

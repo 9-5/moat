@@ -19,10 +19,43 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from
-... (FILE CONTENT TRUNCATED) ...
+    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
+        if config_data is None:
+            config_data = {}  # Treat empty file as empty dict
+    
+    try:
+        validated_settings = MoatSettings(**config_data)
+        print(f"Config: Successfully loaded and validated settings from {CONFIG_FILE_PATH}")
+        _settings = validated_settings
+        _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
+        return _settings
+    except Exception as e:
+        print(f"Config: Error loading or validating settings from {CONFIG_FILE_PATH}: {e}")
+        raise
 
-LE_PATH}")
+def get_settings() -> MoatSettings:
+    """Returns the current settings, loading from file if necessary."""
+    global _settings
+    if _settings is None:
+        _settings = load_config()
+    return copy.deepcopy(_settings) # Return a copy to prevent accidental modification
+
+async def save_settings(settings: MoatSettings) -> bool:
+    """Saves the settings to the configuration file."""
+    global _settings, _config_last_modified_time
+    try:
+        # Convert settings back to a dictionary for YAML serialization
+        config_data = settings.model_dump()
+
+        # Write the dictionary to the YAML file
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            yaml.dump(config_data, f, sort_keys=False) # sort_keys=False keeps order
+
+        # Reload the configuration to update the cached settings and mtime
+        validated_settings = load_config(force_reload=True) # force_reload just in case
+        print(f"Config: Successfully saved and validated settings to {CONFIG_FILE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
