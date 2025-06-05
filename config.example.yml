@@ -5,8 +5,6 @@ access_token_expire_minutes: 60
 database_url: sqlite+aiosqlite:///./moat.db
 moat_base_url: https://moat.bor.i.ng
 cookie_domain: .bor.i.ng
-login_url: null
-logout_url: null
 docker_monitor_enabled: false
 moat_label_prefix: moat
 static_services:

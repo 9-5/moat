@@ -17,10 +17,10 @@ async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     success: bool = False,
-    error_message: str = ""
+    error_message: str = None
 ):
     """Displays the configuration form."""
-    config_content = yaml.dump(get_current_config_as_dict(), sort_keys=False)
+    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -29,26 +29,25 @@ async def view_config_form(
         "error_message": error_message
     })
 
+
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """Updates the configuration based on form data."""
+    """Handles the submission of the configuration form."""
     try:
-        # Load the YAML data
-        new_config_data = yaml.safe_load(config_content)
+        # Validate the config by loading it into pydantic model
+        raw_config = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**raw_config)
 
-        # Validate against the MoatSettings model
-        validated_settings = MoatSettings(**new_config_data)
-
-        # Save the validated settings
-        if await save_settings(validated_settings):
-            # Apply settings changes to the runtime (e.g., restart Docker monitor)
+        # Save the validated configuration
+        if save_settings(validated_settings):
+            # Apply changes to the runtime
             await apply_settings_changes_to_runtime(get_settings(), validated_settings)
 
-            # Redirect back to the config form with a success message
+            # Redirect back to the form with a success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

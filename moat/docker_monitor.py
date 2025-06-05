@@ -21,74 +21,61 @@ async def is_docker_monitor_running() -> bool:
     return _monitor_task_active
 
 async def process_container_labels(container, action: str):
-    """Processes labels of a Docker container to register/unregister services."""
+    """Extract relevant labels and register or unregister services in the global registry."""
     cfg = get_settings()
-    label_prefix = cfg.moat_label_prefix
-    enable_label = f"{label_prefix}.enable"
-    hostname_label = f"{label_prefix}.hostname"
-    port_label = f"{label_prefix}.port"
+    moat_label_prefix = cfg.moat_label_prefix
+    enable_label = f"{moat_label_prefix}.enable"
+    hostname_label = f"{moat_label_prefix}.hostname"
+    port_label = f"{moat_label_prefix}.port"
 
     labels = container.labels
-
     if enable_label not in labels or hostname_label not in labels or port_label not in labels:
-        return  # Missing required labels, skip
+        print(f"Docker Monitor: Required labels missing on container {container.name} ({container.id[:12]}), skipping.")
+        return
 
-    if labels[enable_label].lower() != "true":
-        return  # Service not enabled, skip
+    if labels.get(enable_label).lower() != "true":
+        print(f"Docker Monitor: {enable_label} is not 'true' on container {container.name} ({container.id[:12]}), skipping.")
+        return
 
     hostname = labels[hostname_label]
     try:
         port = int(labels[port_label])
     except ValueError:
-        print(f"Docker Monitor: Invalid port value for container {container.name}, skipping.")
+        print(f"Docker Monitor: Invalid port value '{labels[port_label]}' on container {container.name} ({container.id[:12]}), skipping.")
         return
 
-    target_url = f"http://{container.name}:{port}"
-
+    target_url = f"http://{container.name}:{port}"  # or container.attrs['NetworkSettings']['Networks']['bridge']['IPAddress']
+    print(f"Docker Monitor: Found service: {hostname} -> {target_url}")
     if action == "start":
-        print(f"Docker Monitor: Registering {hostname} -> {target_url} (Container: {container.name})")
-        await global_registry.register_service(hostname, target_url)
+        await global_registry.register_service(hostname, target_url, container_id=container.id)
     elif action == "stop":
-        print(f"Docker Monitor: Unregistering {hostname} (Container: {container.name})")
         await global_registry.unregister_service(hostname)
 
 async def watch_docker_events():
-    """Watches Docker events for container start/stop to update service registry."""
+    """Watches Docker events and updates the service registry accordingly."""
     global _monitor_task_should_stop, _monitor_task_active
     _monitor_task_active = True
     print("Docker Monitor: Starting event watcher...")
-    
+
     try:
         client = docker.from_env()
-        async for event in client.events(filters={"type": "container", "event": ["start", "stop", "die"]}, decode=True):
+        # Load existing containers at startup, mimicking "start" events
+        print("Docker Monitor: Initial service discovery...")
+        for container in client.containers.list(all=True):
+            if container.status == 'running': # Only process running containers on startup
+                await process_container_labels(container, "start")
+
+        async for event in client.events(decode=True):
             if _monitor_task_should_stop.is_set():
-                print("Docker Monitor: Stop signal detected, exiting event loop.")
+                print("Docker Monitor: Event watcher received stop signal.")
                 break
-            
-            action = event["status"]
-            if action in ["start", "stop", "die"]:
-                container_id = event["id"]
+            if event["Type"] == "container":
+                action = event["Action"]
                 try:
-                    container = client.containers.get(container_id)
-                    await process_container_labels(container, action)
-                except NotFound:
-                    # Container disappeared before we could inspect it?
-                    # Also handle 'die' event when container is already stopped.
-                    if action == "start":
-                        print(f"Docker Monitor: Container {event['id'][:12]} started, but not found immediately after. Assuming it's gone, skipping.")
-                        await global_registry.unregister_by_container_id(event["id"])
-                    elif action in ["stop", "die"]:
-                        print(f"Docker Monitor: Container {event['id'][:12]} stopped/died. Cleaning up container from registry if needed.")
-                        await global_registry.unregister_by_container_id(event["id"])
-                        else:
-                            print(f"Docker Monitor: Container {event['id'][:12]} not found for event {action}, skipping.")
-                except Exception as e:
-                    print(f"Docker Monitor: Error processing event for {event['id'][:12]}: {e}")
-    except docker.errors.DockerException as e:
-        print(f"Docker Monitor: DockerException in event stream: {e}. Is Docker running and accessible? Stopping monitor.")
-    except Exception as e:
-        print(f"Docker Monitor: Error in event stream: {e}. Stopping monitor.")
-    finally:
-        print("Docker Monitor: Event watcher stopped.")
-        _monitor_task_active = False
-        _monitor_task_should_stop.clear()
+                    if action in ("start", "die", "stop", "destroy"): # 'die' seems to come before 'stop' on compose down.
+                        container = client.containers.get(event["id"])
+                        if container:
+                            print(f"Docker Monitor: Event: Container {event['id'][:12]} {action}")
+                            await process_container_labels(container, "start" if action == "start" else "stop")
+                            if action in ("die", "stop", "destroy"):
+                                await global_registry.unre
