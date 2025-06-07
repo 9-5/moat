@@ -19,8 +19,9 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """Displays the configuration form."""
-    config_content = yaml.dump(get_current_config_as_dict(), indent=2, sort_keys=False)
+    """Displays the configuration form with the current config."""
+    config_content = yaml.dump(load_config().model_dump(), indent=2)
+
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
         "current_user": current_user,
@@ -28,7 +29,6 @@ async def view_config_form(
         "success": success,
         "error_message": error_message
     })
-
 
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
@@ -38,17 +38,16 @@ async def update_config(
 ):
     """Handles the submission of the configuration form."""
     try:
-        # Validate the YAML content
+        # Validate YAML format
         yaml.safe_load(config_content)
-        
-        # Save the configuration
-        success = save_settings(config_content)
 
-        if success:
-            # Apply the settings changes to the runtime
-            await apply_settings_changes_to_runtime(None, get_settings())
+        # Attempt to save settings
+        if save_settings(config_content):
+            # Apply settings changes to runtime
+            new_settings = load_config(force_reload=True) # Reload to get the new settings
+            apply_settings_changes_to_runtime(old_settings=None, new_settings=new_settings)
 
-            # Redirect to the config form with a success message
+            # Redirect with success message
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:

@@ -16,66 +16,42 @@ async def get_current_user_from_cookie(request: Request) -> Optional[User]:
     
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
     if not token:
-        
-        print(f"No token found in cookie for {request.url}, returning None.")
+        print("No access token cookie found.")
         return None
 
-    try:
-        payload = decode_access_token(token)
-        if payload is None:
-            print(f"Token is invalid or expired, returning None.")
-            return None
-        username = payload.get("sub")
-        if username is None:
-            print(f"Token payload missing 'sub' (username), returning None.")
-            return None
-
-        return User(username=username)
-    except Exception as e:
-        print(f"An unexpected error occurred while decoding token: {e}")
+    payload = decode_access_token(token)
+    if payload is None:
+        print("Invalid access token in cookie.")
         return None
+
+    username = payload.get("sub")
+    if not username:
+        print("No username found in access token.")
+        return None
+
+    user = await get_user(username)
+    if user is None:
+        print(f"User '{username}' from access token not found in database.")
+        return None
+
+    print(f"User '{username}' authenticated from cookie.")
+    return User(username=user.username)
 
 async def get_current_user_or_redirect(request: Request) -> User:
+    """
+    Retrieves the current user from the access token cookie. If no valid token 
+    is found, redirects the user to the login page, preserving the originally 
+    requested URL for redirection after successful login.
+    """
     cfg = get_settings()
     user = await get_current_user_from_cookie(request)
     if user is None:
-        print(f"No valid user found, redirecting to login page from {request.url}.")
+        print(f"No valid user found, redirecting to login: {request.url}")
         
-        # Construct the 'next' URL for redirecting back after login
-        # Note:  We need to be careful to encode this URL so it's safe in a query parameter.
-        # Without `quote_plus` spaces and special characters can break the URL or introduce vulnerabilities.
+        # URL-encode the original path so that the login page can redirect back
+        login_redirect_url_encoded = quote_plus(str(request.url))
         
-        current_url_path = request.url.path
-        current_url_query = request.url.query
+        # Construct the full login URL with the 'next' parameter
+        login_url = f"/moat/auth/login?next={login_redirect_url_encoded}"
 
-        next_url = str(request.url)
-
-        login_url = urljoin(str(request.base_url), "/moat/auth/login") # use urljoin for safety
-        
-        encoded_next_url = quote_plus(next_url)  # URL-encode the next URL
-        
-        full_login_url = f"{login_url}?next={encoded_next_url}"
-        
-        print(f"Redirecting to login URL: {full_login_url}")
-        
-        headers = {"Location": full_login_url}
-
-        # Manually construct the "Set-Cookie" header to delete the cookie, covering all bases.
-        # This is important to ensure that if a user has an invalid cookie, it gets cleared.
-        # The attributes (path, domain, secure, httponly, samesite) MUST match the original
-        # cookie's attributes for the deletion to be effective.
-        delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
-        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
-            delete_cookie_header_val += "; Secure"
-        if cfg.cookie_domain: # Add domain if configured for deletion
-            delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
-        headers["Set-Cookie"] = delete_cookie_header_val
-
-        raise HTTPException(
-            status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-            detail="Not authenticated, redirecting to login.",
-            headers=headers
-        )
-        
-    print(f"User '{user.username}' authenticated successfully for {request.url}, proceeding with request.")
-    return user
+        headers = {"Location": login_url
