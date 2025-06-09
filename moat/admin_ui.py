@@ -16,39 +16,9 @@ templates = Jinja2Templates(directory="moat/templates")
 async def view_config_form(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
-    success: bool = False,
-    error_message: str = ""
-):
-    """Displays the configuration form with the current config."""
-    config_content = yaml.dump(load_config().model_dump(), indent=2)
-
-    return templates.TemplateResponse("admin_config.html", {
-        "request": request,
-        "current_user": current_user,
-        "config_content": config_content,
-        "success": success,
-        "error_message": error_message
-    })
-
-@router.post("/config", response_class=HTMLResponse)
-async def update_config(
-    request: Request,
-    current_user: User = Depends(get_current_user_or_redirect),
-    config_content: str = Form(...)
-):
-    """Handles the submission of the configuration form."""
-    try:
-        # Validate YAML format
-        yaml.safe_load(config_content)
-
-        # Attempt to save settings
-        if save_settings(config_content):
-            # Apply settings changes to runtime
-            new_settings = load_config(force_reload=True) # Reload to get the new settings
-            apply_settings_changes_to_runtime(old_settings=None, new_settings=new_settings)
-
-            # Redirect with success message
-            redirect_url = request.url.include_query_params(success=True)
+    success: bool
+... (FILE CONTENT TRUNCATED) ...
+s=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
             error_message = "Failed to save configuration. Check server logs for details. Validation might have failed."
