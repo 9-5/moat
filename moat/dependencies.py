@@ -9,34 +9,32 @@ from .config import get_settings
 
 ACCESS_TOKEN_COOKIE_NAME = "moat_access_token"
 
-# REMOVING GET_CURRENT_USER_FROM_COOKIE - no longer used directly. Logic moved into get_current_user_or_redirect
-
 async def get_current_user_or_redirect(request: Request) -> User:
     """
     Retrieves the current user from the access token cookie. If no valid token 
-    is found, redirects the user to the login page, preserving the originally 
-    requested URL for redirection after successful login.
+    is found, redirects the user to the login page, preserving the original
+    request URL in the 'next' query parameter.
     """
     cfg = get_settings()
+
     token = request.cookies.get(ACCESS_TOKEN_COOKIE_NAME)
 
     if not token:
-        print(f"No token cookie found, redirecting to login: {request.url}")
+        print(f"get_current_user_or_redirect: No token found, redirecting to login.")
 
-        # URL-encode the original path so that the login page can redirect back
-        login_redirect_url_encoded = quote_plus(str(request.url))
-        
-        # Construct the full login URL with the 'next' parameter
-        login_url = f"/moat/auth/login?next={login_redirect_url_encoded}"
-        
-        # Return an HTTP exception that contains a redirect in the headers.
-        # This is a workaround for FastAPI not directly supporting redirects within dependencies.
+        # Construct the 'next' URL, encoding the original request URL.
+        current_url = request.url
+        login_url = cfg.moat_base_url if cfg.moat_base_url else request.base_url # Fallback to base_url if moat_base_url not set
+        next_url = quote_plus(str(current_url)) #encode original URL
 
-        headers = {"Location": login_url}
+        # Construct the redirect URL to the login page, including the 'next' parameter.
+        redirect_url = urljoin(login_url, f"/moat/auth/login?next={next_url}")
 
-        # Added delete cookie header on redirect to login (belt and braces).
+        # Craft headers for the redirect response, including a Set-Cookie header to clear the cookie (belt and braces).
+        headers = {"Location": redirect_url} # Standard redirect
+        # Clear existing cookie just in case
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
-        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+        if cfg.moat_base_url and cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion
             delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
@@ -48,39 +46,42 @@ async def get_current_user_or_redirect(request: Request) -> User:
             headers=headers
         )
 
+    # Decode the access token to get the username.
     payload = decode_access_token(token)
-    if payload is None:
-        print(f"Invalid token found, redirecting to login: {request.url}")
+    if not payload:
+        print(f"get_current_user_or_redirect: Invalid token, redirecting to login.")
 
-        login_redirect_url_encoded = quote_plus(str(request.url))
-        login_url = f"/moat/auth/login?next={login_redirect_url_encoded}"
-        headers = {"Location": login_url}
-        
-        # Added delete cookie header on redirect to login (belt and braces).
+        current_url = request.url
+        login_url = cfg.moat_base_url if cfg.moat_base_url else request.base_url
+        next_url = quote_plus(str(current_url))
+        redirect_url = urljoin(login_url, f"/moat/auth/login?next={next_url}")
+
+        headers = {"Location": redirect_url}
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
-        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+        if cfg.moat_base_url and cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion
             delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
         headers["Set-Cookie"] = delete_cookie_header_val
-        
+
         raise HTTPException(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
             detail="Invalid token, redirecting to login.",
             headers=headers
         )
+    
+    username = payload.get("sub")
+    if not username:
+        print(f"get_current_user_or_redirect: No username in token, redirecting to login.")
 
-    username = payload.get("username")
-    if username is None:
-        print("No username found in token, redirecting to login.")
+        current_url = request.url
+        login_url = cfg.moat_base_url if cfg.moat_base_url else request.base_url
+        next_url = quote_plus(str(current_url))
+        redirect_url = urljoin(login_url, f"/moat/auth/login?next={next_url}")
 
-        login_redirect_url_encoded = quote_plus(str(request.url))
-        login_url = f"/moat/auth/login?next={login_redirect_url_encoded}"
-        headers = {"Location": login_url}
-
-        # Added delete cookie header on redirect to login (belt and braces).
+        headers = {"Location": redirect_url}
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
-        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+        if cfg.moat_base_url and cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion
             delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
@@ -92,17 +93,20 @@ async def get_current_user_or_redirect(request: Request) -> User:
             headers=headers
         )
 
+    # Get the user from the database.
     user = await get_user(username)
-    if user is None:
-        print(f"User '{username}' not found, redirecting to login.")
+    if not user:
+        print(f"get_current_user_or_redirect: User '{username}' not found, redirecting to login.")
 
-        login_redirect_url_encoded = quote_plus(str(request.url))
-        login_url = f"/moat/auth/login?next={login_redirect_url_encoded}"
-        headers = {"Location": login_url}
+        current_url = request.url
+        login_url = cfg.moat_base_url if cfg.moat_base_url else request.base_url
+        next_url = quote_plus(str(current_url))
+        redirect_url = urljoin(login_url, f"/moat/auth/login?next={next_url}")
 
-        # Added delete cookie header on redirect to login (belt and braces).
+        headers = {"Location": redirect_url}
+        #Clear existing cookie just in case.
         delete_cookie_header_val = f"{ACCESS_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"
-        if cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
+        if cfg.moat_base_url and cfg.moat_base_url.scheme == "https": # moat_base_url is HttpUrl type
             delete_cookie_header_val += "; Secure"
         if cfg.cookie_domain: # Add domain if configured for deletion
             delete_cookie_header_val += f"; Domain={cfg.cookie_domain}"
