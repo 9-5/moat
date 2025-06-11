@@ -20,40 +20,31 @@ def load_config(force_reload: bool = False) -> MoatSettings:
         return _settings
 
     print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
-    try:
-        with open(CONFIG_FILE_PATH, 'r') as f:
-            config_data = yaml.safe_load(f)
-            validated_settings = MoatSettings(**config_data)
-            _settings = validated_settings
-            _config_last_modified_time = current_mtime
-            return validated_settings
-    except Exception as e:
-        print(f"Config: Error loading or validating configuration: {e}")
-        raise
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
 
-def get_settings() -> MoatSettings:
-    """
-    Returns the current configuration settings.  Loads from file if not already loaded.
-    """
-    global _settings
-    if _settings is None:
-        _settings = load_config() # Load config if not already loaded
+    try:
+        validated_settings = MoatSettings(**config_data)
+    except Exception as e:
+        print(f"Config: Error validating configuration: {e}")
+        raise # Re-raise to prevent Moat from running with invalid settings
+
+    _settings = validated_settings
+    _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
     return _settings
 
 def save_settings(settings: MoatSettings) -> bool:
-    """Saves the given settings to the configuration file."""
     global _settings, _config_last_modified_time
-
     try:
-        # Validate before saving
-        validated_settings = MoatSettings(**settings.model_dump())
+        cfg_dict = settings.model_dump() # Use model_dump instead of dict()
         
-        # Write to YAML file.
-        cfg_dict = validated_settings.model_dump()
         with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(cfg_dict, f, indent=2, sort_keys=False, default_flow_style=False)
+            print(f"Config: Saving configuration to {CONFIG_FILE_PATH}")
+        
+            yaml.dump(cfg_dict, f, sort_keys=False)  # Preserve order
+            validated_settings = MoatSettings(**cfg_dict) # re-validate to be 100% sure after saving/loading, but also catch possible serialization errors with pydantic types during save.
 
-        print(f"Config: Saved new settings to {CONFIG_FILE_PATH}")
+            print(f"Config: Successfully saved and validated settings in {CONFIG_FILE_PATH}")
         _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True

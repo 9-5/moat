@@ -19,10 +19,8 @@ async def view_config_form(
     success: bool = False,
     error_message: str = ""
 ):
-    """
-    Displays the configuration form with the current configuration.
-    """
-    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False)
+    """Displays the configuration form."""
+    config_content = yaml.dump(load_config().model_dump(), indent=2, sort_keys=False) # use model_dump
 
     return templates.TemplateResponse("admin_config.html", {
         "request": request,
@@ -32,22 +30,27 @@ async def view_config_form(
         "error_message": error_message
     })
 
+
 @router.post("/config", response_class=HTMLResponse)
 async def update_config(
     request: Request,
     current_user: User = Depends(get_current_user_or_redirect),
     config_content: str = Form(...)
 ):
-    """
-    Updates the configuration based on the submitted form data.
-    """
+    """Handles the submission of the configuration form."""
     try:
-        # Validate the YAML content before saving.
-        new_config = yaml.safe_load(config_content)
-        validated_settings = MoatSettings(**new_config)
-        
-        if save_settings(validated_settings):
-            # Successfully saved, redirect with success message.
+        # Attempt to parse and validate the YAML
+        new_config_dict = yaml.safe_load(config_content)
+        validated_settings = MoatSettings(**new_config_dict)
+
+        # Save the validated settings
+        if await save_settings(validated_settings):
+            # Apply the settings changes to the runtime
+            await apply_settings_changes_to_runtime(
+                old_settings=get_settings(),
+                new_settings=validated_settings
+            )
+
             redirect_url = request.url.include_query_params(success=True)
             return RedirectResponse(url=str(redirect_url), status_code=status.HTTP_303_SEE_OTHER)
         else:
