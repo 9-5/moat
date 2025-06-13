@@ -16,8 +16,7 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: str):
-    user
+async def authenticate_user(username: str, password: s
 ... (FILE CONTENT TRUNCATED) ...
 out - Redirecting to: {logout_redirect_target_url} after logout.")
 

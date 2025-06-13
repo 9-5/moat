@@ -20,6 +20,7 @@ async def apply_settings_changes_to_runtime(
     
     old
 ... (FILE CONTENT TRUNCATED) ...
+
 get_event_loop()
             _runtime_docker_monitor_task = current_loop.create_task(watch_docker_events())
         else:
