@@ -17,13 +17,12 @@ HOP_BY_HOP_HEADERS_AND_HOST = [
 
 # Headers to remove from backend response before sending to client.
 # aiohttp handles decompression by default, so Content-Encoding from backend is typically removed.
-RESPONSE_HOP_BY_HOP_HE
-... (FILE CONTENT TRUNCATED) ...
-   # Keep 502 for these, or consider 503 if it implies temporary unavailability
-            return FastAPIResponse(f"AIOHTTP client error communication with {lookup_hostname}", status_code=status_code_to_return)
-        except Exception as e:
-            print(f"Proxy Error (Unexpected) while proxying with AIOHTTP to '{full_target_url_for_request}': {type(e).__name__} - {e!r}")
-            return FastAPIResponse(f"General proxy error for {lookup_hostname}: {type(e).__name__}", status_code=500)
-        # `session` (aiohttp.ClientSession) is closed by its `async with`.
-        # `backend_aiohttp_response` is closed by its `async with` or by the streamer's `release()`
-        # or by `backend_aiohttp_response.read()` in the "read_fully" case.
+RESPONSE_HOP_BY_HOP_HEADERS = [
+    'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
+    'te', 'trailers', 'transfer-encoding', 'upgrade',
+    'content-encoding', # Important: aiohttp auto-decompresses. If backend sends this, browsers may incorrectly handle it.
+]
+
+async def stream_response(backend_aiohttp_response: aiohttp.ClientResponse) -> AsyncGenerator[bytes, None]:
+    """
+    Streams data from the backend response to the client.

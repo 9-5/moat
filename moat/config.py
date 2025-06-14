@@ -19,10 +19,30 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from
-... (FILE CONTENT TRUNCATED) ...
-LE_PATH}")
-        _settings = validated_settings
+    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
+    with open(CONFIG_FILE_PATH, 'r') as f:
+        config_data = yaml.safe_load(f)
+        if config_data is None:
+            config_data = {} # Treat empty file as empty dict
+
+    validated_settings = MoatSettings(**config_data)
+    _settings = validated_settings
+    _config_last_modified_time = current_mtime
+    return _settings
+
+async def save_settings(new_settings: MoatSettings) -> bool:
+    global _settings, _config_last_modified_time
+
+    try:
+        # Convert Pydantic model back to a dictionary for YAML serialization
+        settings_dict = new_settings.model_dump()
+
+        # Write the dictionary to the config file
+        with open(CONFIG_FILE_PATH, 'w') as f:
+            yaml.dump(settings_dict, f, sort_keys=False)
+
+        print(f"Config: New settings saved to {CONFIG_FILE_PATH}")
+        _settings = new_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
     except Exception as e:

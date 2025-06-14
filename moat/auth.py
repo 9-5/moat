@@ -16,25 +16,6 @@ from .config import get_settings
 router = APIRouter(prefix="/moat/auth", tags=["authentication"])
 templates = Jinja2Templates(directory="moat/templates")
 
-async def authenticate_user(username: str, password: s
+async def authenticate_user(username: str, password: str):
 ... (FILE CONTENT TRUNCATED) ...
-out - Redirecting to: {logout_redirect_target_url} after logout.")
-
-    response = RedirectResponse(url=logout_redirect_target_url, status_code=status.HTTP_303_SEE_OTHER)
-    
-    cookie_domain_setting = cfg.cookie_domain
-    is_secure_connection_for_cookie_delete = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
-    print(f"GET /logout - Deleting cookie. Domain: '{cookie_domain_setting}', Secure: {is_secure_connection_for_cookie_delete}")
-
-    response.delete_cookie(
-        ACCESS_TOKEN_COOKIE_NAME,
-        path="/",
-        domain=cookie_domain_setting,
-        secure=is_secure_connection_for_cookie_delete,
-        httponly=True,
-        samesite="Lax"
-    )
     return response
