@@ -26,8 +26,8 @@ class MoatSettings(BaseModel):
     database_url: str = "sqlite+aiosqlite:///./moat.db"
     
     moat_base_url: HttpUrl # Public URL for Moat's auth pages, e.g., https://moat.yourdomain.com
-    cookie_domain: Optional[str] = None # e.g., ".example.com" for subdomains,
-         # or specific hostname if not using subdomains for apps
+    cookie_domain: Optional[str] = None # e.g., ".yourdomain.com" for SSO across subdomains
+                                        # or specific hostname if not using subdomains for apps
 
     docker_monitor_enabled: bool = True
     moat_label_prefix: str = "moat"

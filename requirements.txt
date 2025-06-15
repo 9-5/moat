@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+httpx
+aiohttp
+python-jose[cryptography]
+passlib
+bcrypt==4.0.1
+pydantic
+pyyaml
+docker
+aiosqlite
+typer[all]
+jinja2
+python-multipart
+watchdog

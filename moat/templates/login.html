@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1" name="viewport"/>
+    <title>Moat - Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); /* Darker blue to vibrant blue */
+        }
+        .input-icon {
+            top: 50%;
+            transform: translateY(-50%);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+
+  <div class="w-full max-w-md">
+    <div class="bg-slate-800 bg-opacity-50 backdrop-blur-md shadow-xl rounded-xl p-8 md:p-12 text-white">
+        <div class="text-center mb-8">
+            <div class="inline-block p-4 bg-blue-600 rounded-full mb-4 shadow-md">
+                <i class="fas fa-shield-alt fa-3x text-white"></i>
+            </div>
+            <h1 class="text-3xl font-bold tracking-tight">Moat</h1>
+            <p class="text-blue-200 text-sm">A moat built around your apps.</p>
+        </div>
+        
+        <form method="post" action="{{ request.url_for('login_for_access_token') }}" class="space-y-6">
+            {% if request.query_params.get("error") == "invalid_credentials" %}
+                <div class="p-3 text-sm text-red-200 bg-red-500 bg-opacity-70 rounded-lg text-center shadow">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>Invalid username or password.
+                </div>
+            {% endif %}
+
+            {% if redirect_uri %}
+                <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+            {% endif %}
+
+            <div>
+                <label for="username" class="block text-sm font-medium text-blue-100 mb-1">Username</label>
+                <div class="relative flex items-center">
+                    <i aria-hidden="true" class="fas fa-user absolute left-4 text-gray-400 pointer-events-none input-icon"></i>
+                    <input type="text" name="username" id="username" required
+                           class="w-full rounded-lg py-3 pl-12 pr-4 bg-slate-700 bg-opacity-50 text-white placeholder-gray-400 border border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                           placeholder="Enter your username">
+                </div>
+            </div>
+
+            <div>
+                <label for="password" class="block text-sm font-medium text-blue-100 mb-1">Password</label>
+                <div class="relative flex items-center">
+                    <i aria-hidden="true" class="fas fa-lock absolute left-4 text-gray-400 pointer-events-none input-icon"></i>
+                    <input type="password" name="password" id="password" required
+                           class="w-full rounded-lg py-3 pl-12 pr-4 bg-slate-700 bg-opacity-50 text-white placeholder-gray-400 border border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all"
+                           placeholder="Enter your password">
+                </div>
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg py-3 font-semibold shadow-md hover:shadow-lg transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+                <i class="fas fa-sign-in-alt mr-2"></i>Login
+            </button>
+            <div class="mt-4 pt-6 border-t border-slate-700">
+                <p class="text-blue-200 text-sm"><a href="https://github.com/9-5/moat"><i class="fab fa-github mr-2"></i>See this project on GitHub</a></p>
+            </div>
+        </form>
+    </div>
+  </div>
+</body>
+</html>

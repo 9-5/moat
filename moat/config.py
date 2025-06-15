@@ -19,30 +19,52 @@ def load_config(force_reload: bool = False) -> MoatSettings:
     if not force_reload and _settings is not None and _config_last_modified_time == current_mtime:
         return _settings
 
-    print(f"Config: Loading configuration from {CONFIG_FILE_PATH}")
+    print(f"Config: Loading configuration from {CONFIG_FILE_PATH} (force_reload: {force_reload}, mtime changed: {_config_last_modified_time != current_mtime})")
     with open(CONFIG_FILE_PATH, 'r') as f:
         config_data = yaml.safe_load(f)
         if config_data is None:
-            config_data = {} # Treat empty file as empty dict
+            config_data = {} 
+            
+    try:
+        new_settings = MoatSettings(**config_data)
+    except Exception as e:
+        print(f"Config: Error parsing new configuration: {e}")
+        if _settings is not None: 
+            print("Config: Reverting to previously loaded valid configuration due to parsing error.")
+            return _settings
+        else: 
+            raise ValueError(f"Config: Critical error parsing initial configuration: {e}")
 
-    validated_settings = MoatSettings(**config_data)
-    _settings = validated_settings
+    _settings = new_settings
     _config_last_modified_time = current_mtime
+    print(f"Config: Successfully loaded/reloaded. Docker Monitor: {_settings.docker_monitor_enabled}, Static Services: {len(_settings.static_services)}")
     return _settings
 
-async def save_settings(new_settings: MoatSettings) -> bool:
+
+def get_settings() -> MoatSettings:
+    global _settings
+    if _settings is None:
+        try:
+            return load_config()
+        except FileNotFoundError:
+            raise RuntimeError("Settings not loaded. Ensure config.yml exists or load_config() is called.")
+        except ValueError as e: # Catch parsing errors from initial load
+             raise RuntimeError(f"Critical error loading initial settings: {e}")
+    return _settings
+
+def save_settings(new_settings_data: dict) -> bool:
+    """Validates and saves new settings data to config.yml."""
     global _settings, _config_last_modified_time
-
     try:
-        # Convert Pydantic model back to a dictionary for YAML serialization
-        settings_dict = new_settings.model_dump()
-
-        # Write the dictionary to the config file
-        with open(CONFIG_FILE_PATH, 'w') as f:
-            yaml.dump(settings_dict, f, sort_keys=False)
-
-        print(f"Config: New settings saved to {CONFIG_FILE_PATH}")
-        _settings = new_settings
+        validated_settings = MoatSettings(**new_settings_data)
+        
+        temp_config_path = CONFIG_FILE_PATH.with_suffix(".yml.tmp")
+        with open(temp_config_path, 'w') as f:
+            yaml.dump(new_settings_data, f, sort_keys=False, default_flow_style=False)
+        temp_config_path.rename(CONFIG_FILE_PATH)
+        
+        print(f"Config: Settings successfully written to {CONFIG_FILE_PATH}")
+        _settings = validated_settings
         _config_last_modified_time = CONFIG_FILE_PATH.stat().st_mtime
         return True
     except Exception as e:
