@@ -2,7 +2,7 @@
 
 # Moat - Build a moat around your self-hosted apps.
 
-Moat is a lightweight, FastAPI-based security gateway that provides authentication and reverse proxying capabilities for your web services. It can manage service discovery through Docker labels or static configuration.
+Moat is a lightweight, FastAPI-based security/SSO gateway that provides authentication and reverse proxying capabilities for your web services. It can manage service discovery through Docker labels or static configuration.
 
 ## Table of Contents
 
