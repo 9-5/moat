@@ -20,7 +20,7 @@ async def stop_docker_monitor_task():
         print("Docker Monitor: Stop signal received. Initiating shutdown of tasks...")
         _monitor_task_should_stop.set()
     else:
-        _monitor_task_active = False # Ensure active is false if stop already in progress
+        _monitor_task_active = False
         return
 
     listener_task = _event_listener_manager_task_ref
@@ -63,7 +63,6 @@ async def is_docker_monitor_running() -> bool:
         else:
             return False
     return False
-
 
 async def process_container_labels(container_obj, action: str):
     cfg = get_settings()
@@ -156,20 +155,20 @@ def _listen_for_docker_events_thread(queue: asyncio.Queue, stop_event: asyncio.E
     docker_client_thread = None
     try:
         docker_client_thread = docker.from_env()
-        for event_data in docker_client_thread.events(decode=True): # This blocks
+        for event_data in docker_client_thread.events(decode=True):
             if stop_event.is_set(): break
             try: asyncio.run_coroutine_threadsafe(queue.put(event_data), loop).result(timeout=1.0)
             except asyncio.TimeoutError:
                 print("Docker Monitor (Thread): Timeout putting event on queue.")
                 if stop_event.is_set(): break 
-            except Exception as e: print(f"Docker Monitor (Thread): Error putting event: {e}"); break # Break on other put errors
+            except Exception as e: print(f"Docker Monitor (Thread): Error putting event: {e}"); break
     except APIError as e: print(f"Docker Monitor (Thread): Docker APIError: {e}. Thread stopping.")
     except Exception as e: print(f"Docker Monitor (Thread): Unexpected error: {e}. Thread stopping.")
     finally:
         if docker_client_thread:
             try: docker_client_thread.close()
             except: pass
-        try: asyncio.run_coroutine_threadsafe(queue.put(None), loop).result(timeout=1.0) # Sentinel
+        try: asyncio.run_coroutine_threadsafe(queue.put(None), loop).result(timeout=1.0)
         except: print("Docker Monitor (Thread): Error putting sentinel.")
         print("Docker Monitor (Thread): Listener stopped.")
 
@@ -259,7 +258,7 @@ async def watch_docker_events():
         if _event_listener_manager_task_ref: current_tasks.append(_event_listener_manager_task_ref)
         if _event_processing_task_ref: current_tasks.append(_event_processing_task_ref)
         
-        if not current_tasks: # Should not happen if tasks were created
+        if not current_tasks:
             print("Docker Monitor: No tasks to wait for. Exiting manager.")
             _monitor_task_active = False
             if docker_client_main: await loop.run_in_executor(None, docker_client_main.close)
@@ -285,10 +284,7 @@ async def watch_docker_events():
         print("Docker Monitor: Watcher manager finishing...")
         _monitor_task_active = False 
         _monitor_task_should_stop.set()
-
-        # Final cleanup attempt, referencing local copies that were snapshotted if global refs were cleared
         tasks_to_finalize_final_attempt = []
-        # Check original global refs if they haven't been cleared by a successful stop_docker_monitor_task call
         final_listener_task = _event_listener_manager_task_ref 
         final_processor_task = _event_processing_task_ref
         
@@ -300,7 +296,6 @@ async def watch_docker_events():
             try: await asyncio.wait_for(task, timeout=1.0)
             except: pass
         
-        # Ensure global references are cleared if not already
         _event_listener_manager_task_ref = None
         _event_processing_task_ref = None
 
