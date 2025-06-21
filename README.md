@@ -4,6 +4,8 @@
 
 Moat is a lightweight, FastAPI-based security/SSO gateway that provides authentication and reverse proxying capabilities for your web services. It can manage service discovery through Docker labels or static configuration.
 
+https://github.com/user-attachments/assets/37d941c5-efb6-49a7-a56e-82f8aa0f49e7
+
 ## Table of Contents
 
 [Screenshots](#screenshots)
